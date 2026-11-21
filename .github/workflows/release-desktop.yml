@@ -644,6 +644,11 @@ jobs:
 
               echo "macOS signing enabled."
               args+=(--signed)
+            elif has_all "$CSC_LINK" "$CSC_KEY_PASSWORD"; then
+              # Fork: a certificate alone signs without notarization or passkeys, which
+              # keeps Squirrel.Mac updates working between builds signed by the same identity.
+              echo "macOS signing enabled without notarization."
+              args+=(--signed)
             else
               echo "macOS signing disabled (missing one or more Apple signing secrets)."
             fi
