@@ -1,0 +1,36 @@
+# CI for feature PRs into the fork's main.
+# Upstream's ci.yml is disabled in the fork because it needs Blacksmith runners.
+# This runs CI's fast checks for the files the fork changes relative to upstream.
+name: Fork CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Fetch upstream base
+        run: |
+          git fetch --no-tags origin upstream:refs/remotes/origin/upstream
+          git fetch --no-tags origin main:refs/remotes/origin/main
+      - uses: ./.github/actions/setup-ci-deps
+      - run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
+      - run: vp run --filter @t3tools/desktop ensure:electron
+      # Format, lint, knip, typecheck of affected packages and dependents, and tests
+      # beside the changes (scripts/check-changed.ts). This covers the PR's diff.
+      - run: node scripts/check-changed.ts origin/main
+      - run: vp run build:desktop

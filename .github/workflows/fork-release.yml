@@ -1,0 +1,278 @@
+#
+# Nightly fork release. Builds `main` for macOS arm64 and Linux x64 on GitHub-hosted
+# runners (free for public repos), reusing upstream's release-desktop.yml for packaging,
+# then publishes a GitHub prerelease in this repo with the electron-updater manifests
+# and CLI archives. Desktop builds bake app-update.yml with owner/repo = this repo,
+# because build-desktop-artifact.ts falls back to GITHUB_REPOSITORY.
+name: Fork release
+
+on:
+  # Off until the first fork release has been verified on a real machine.
+  # schedule:
+  #   - cron: "0 10 * * *" # one hour after fork-sync
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Release even if main has not changed since the last fork nightly
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      skip: ${{ steps.gate.outputs.skip }}
+      ref: ${{ steps.gate.outputs.ref }}
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      release_name: ${{ steps.meta.outputs.name }}
+      previous_tag: ${{ steps.gate.outputs.previous_tag }}
+      clerk_publishable_key: ${{ steps.public_config.outputs.clerk_publishable_key }}
+      clerk_jwt_template: ${{ steps.public_config.outputs.clerk_jwt_template }}
+      clerk_cli_oauth_client_id: ${{ steps.public_config.outputs.clerk_cli_oauth_client_id }}
+      relay_url: ${{ steps.public_config.outputs.relay_url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Skip when main has not changed
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force || 'false' }}
+        run: |
+          ref="$(git rev-parse HEAD)"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          previous_tag="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""')"
+          echo "previous_tag=$previous_tag" >> "$GITHUB_OUTPUT"
+          if [[ "$FORCE" != "true" && -n "$previous_tag" && "$(git rev-parse "$previous_tag^{commit}")" == "$ref" ]]; then
+            echo "main is unchanged since $previous_tag; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup dependencies
+        if: steps.gate.outputs.skip == 'false'
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/scripts...
+
+      # Same version format as upstream nightlies, so the desktop app stays on its
+      # nightly track (scripts/build-desktop-artifact.ts resolveDesktopUpdateChannel).
+      # The run number is offset by 900000. Fork tags then never collide with upstream
+      # tags copied into the fork, and a fork nightly sorts above an upstream nightly
+      # from the same day.
+      - name: Resolve nightly version
+        id: meta
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          node scripts/resolve-nightly-release.ts \
+            --date "$(date -u +%Y%m%d)" \
+            --run-number "$((900000 + ${{ github.run_number }}))" \
+            --sha "${{ steps.gate.outputs.ref }}" \
+            --github-output
+
+      # Upstream's production Clerk and relay ids are public and live in .env.example.
+      # release.yml uses exactly this path for preview builds. Keeping them means
+      # T3 Connect, the hosted relay and mobile pairing work as they do in the official app.
+      - name: Resolve relay public config
+        id: public_config
+        if: steps.gate.outputs.skip == 'false'
+        run: |
+          env_example() { sed -n "s|^T3CODE_$1=||p" .env.example; }
+          {
+            echo "clerk_publishable_key=$(env_example CLERK_PUBLISHABLE_KEY)"
+            echo "clerk_jwt_template=$(env_example CLERK_JWT_TEMPLATE)"
+            echo "clerk_cli_oauth_client_id=$(env_example CLERK_CLI_OAUTH_CLIENT_ID)"
+            echo "relay_url=$(env_example RELAY_URL)"
+          } >> "$GITHUB_OUTPUT"
+
+  build_bundle:
+    name: Build JS bundle
+    needs: preflight
+    if: needs.preflight.outputs.skip == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      T3CODE_CLERK_PUBLISHABLE_KEY: ${{ needs.preflight.outputs.clerk_publishable_key }}
+      T3CODE_CLERK_JWT_TEMPLATE: ${{ needs.preflight.outputs.clerk_jwt_template }}
+      T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ needs.preflight.outputs.clerk_cli_oauth_client_id }}
+      T3CODE_RELAY_URL: ${{ needs.preflight.outputs.relay_url }}
+      T3CODE_TELEMETRY_CHANNEL: dev
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+      - run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
+      - run: vp run build:desktop:bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: js-bundle
+          path: |
+            apps/server/dist
+            apps/desktop/dist-electron
+          if-no-files-found: error
+          retention-days: 1
+
+  # Packaging is upstream's own reusable workflow. Only the runner labels differ.
+  desktop_mac_arm64:
+    name: Desktop macOS arm64
+    needs: [preflight, build_bundle]
+    uses: ./.github/workflows/release-desktop.yml
+    secrets:
+      # Fork patch 0002 signs with only these two (the Apple Development certificate, no notarization).
+      # The APPLE_API_* secrets stay unset: there is no paid Apple membership, so no notarization.
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+    with:
+      version: ${{ needs.preflight.outputs.version }}
+      ref: ${{ needs.preflight.outputs.ref }}
+      release_channel: nightly
+      relay_client_tracing: false
+      clerk_publishable_key: ${{ needs.preflight.outputs.clerk_publishable_key }}
+      clerk_jwt_template: ${{ needs.preflight.outputs.clerk_jwt_template }}
+      clerk_cli_oauth_client_id: ${{ needs.preflight.outputs.clerk_cli_oauth_client_id }}
+      relay_url: ${{ needs.preflight.outputs.relay_url }}
+      label: macOS arm64
+      runner: macos-15
+      platform: mac
+      target: dmg
+      arch: arm64
+      rust_target: aarch64-apple-darwin
+      resource_key: darwin-arm64
+      cli_archive: true
+      launch_check: true
+
+  desktop_linux_x64:
+    name: Desktop Linux x64
+    needs: [preflight, build_bundle]
+    uses: ./.github/workflows/release-desktop.yml
+    with:
+      version: ${{ needs.preflight.outputs.version }}
+      ref: ${{ needs.preflight.outputs.ref }}
+      release_channel: nightly
+      relay_client_tracing: false
+      clerk_publishable_key: ${{ needs.preflight.outputs.clerk_publishable_key }}
+      clerk_jwt_template: ${{ needs.preflight.outputs.clerk_jwt_template }}
+      clerk_cli_oauth_client_id: ${{ needs.preflight.outputs.clerk_cli_oauth_client_id }}
+      relay_url: ${{ needs.preflight.outputs.relay_url }}
+      label: Linux x64
+      runner: ubuntu-24.04
+      platform: linux
+      target: AppImage
+      arch: x64
+      rust_target: x86_64-unknown-linux-gnu
+      resource_key: linux-x64
+      cli_archive: true
+      launch_check: true
+
+  # Not needed today: Scythe-Desktop and power-server are both x64. Uncomment for an arm64 machine.
+  # desktop_linux_arm64:
+  #   ... same as desktop_linux_x64 with runner: ubuntu-24.04-arm, arch: arm64,
+  #   rust_target: aarch64-unknown-linux-gnu, resource_key: linux-arm64
+
+  release:
+    name: Publish GitHub prerelease
+    needs: [preflight, desktop_mac_arm64, desktop_linux_x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cli-*
+          merge-multiple: true
+          path: release-assets
+      - name: Write CLI archive checksums
+        run: |
+          cd release-assets
+          sha256sum t3-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+      # No manifest merge: scripts/merge-release-update-manifests.ts:19-41 needs both
+      # macOS archs and both Windows archs. With macOS arm64 only and no Windows,
+      # electron-builder's nightly-mac.yml and nightly-linux.yml are already final.
+      - name: Check updater manifests
+        run: ls release-assets/nightly-mac.yml release-assets/nightly-linux.yml
+      - name: Write release notes
+        run: |
+          {
+            echo "Fork nightly built from \`${{ needs.preflight.outputs.ref }}\`."
+            echo
+            if [[ -n "${{ needs.preflight.outputs.previous_tag }}" ]]; then
+              echo "Changes since ${{ needs.preflight.outputs.previous_tag }}:"
+              echo "${{ github.server_url }}/${{ github.repository }}/compare/${{ needs.preflight.outputs.previous_tag }}...${{ needs.preflight.outputs.ref }}"
+            fi
+          } > release-notes.md
+      # Created as a draft and published only once every asset is attached, so the
+      # updater never sees a half-uploaded release (same as release.yml).
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          target_commitish: ${{ needs.preflight.outputs.ref }}
+          name: ${{ needs.preflight.outputs.release_name }}
+          body_path: release-notes.md
+          prerelease: true
+          draft: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: |
+            release-assets/*.dmg
+            release-assets/*.zip
+            release-assets/*.AppImage
+            release-assets/*.deb
+            release-assets/*.blockmap
+            release-assets/*.yml
+            release-assets/*.tar.gz
+            release-assets/SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ needs.preflight.outputs.tag }}" --draft=false
+
+      - name: Prune old fork nightlies (keep 14)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 200 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' \
+            | tail -n +15 | xargs -r -n1 gh release delete --cleanup-tag --yes
