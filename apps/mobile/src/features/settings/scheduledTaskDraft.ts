@@ -20,6 +20,11 @@ import {
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
 import {
+  watchDraft,
+  watchScheduleFromDraft,
+  type WatchDraft,
+} from "@t3tools/client-runtime/scheduled-task-watch";
+import {
   resolveProjectSettings,
   type LegacyProjectSettingsFields,
 } from "@t3tools/shared/projectSettings";
@@ -53,7 +58,7 @@ export function scheduledTaskDefaultModel(
 }
 
 export type ScheduleDraft = {
-  readonly mode: "fixed_time" | "once" | "interval" | "webhook";
+  readonly mode: "fixed_time" | "once" | "interval" | "webhook" | "watch";
   readonly timeOfDay: string;
   /** ISO time for a one-time run. Empty until the user picks the "Once" mode. */
   readonly runAt: string;
@@ -67,6 +72,8 @@ export type ScheduleDraft = {
   readonly filters: ReadonlyArray<WebhookFilterDraft>;
   /** The filter rows the form opened with. */
   readonly savedFilters: ReadonlyArray<WebhookFilterDraft>;
+  /** Command, detection and env for a watch; the poll interval is `intervalMinutes`. */
+  readonly watch: WatchDraft;
 };
 
 export const DEFAULT_SCHEDULE: ScheduleDraft = {
@@ -82,6 +89,7 @@ export const DEFAULT_SCHEDULE: ScheduleDraft = {
   coalesceWindowSeconds: "",
   filters: [],
   savedFilters: [],
+  watch: watchDraft(undefined),
 };
 
 export function scheduleDraftForTask(task: Pick<ScheduledTask, "schedule">): ScheduleDraft {
@@ -120,6 +128,15 @@ export function scheduleDraftForTask(task: Pick<ScheduledTask, "schedule">): Sch
         filters: webhookFilterDrafts(task.schedule.filters),
         savedFilters: webhookFilterDrafts(task.schedule.filters),
       };
+    case "watch":
+      return {
+        ...DEFAULT_SCHEDULE,
+        mode: "watch",
+        intervalMinutes: String(Math.max(1, task.schedule.everyMs / 60_000)),
+        filters: webhookFilterDrafts(task.schedule.filters),
+        savedFilters: webhookFilterDrafts(task.schedule.filters),
+        watch: watchDraft(task.schedule),
+      };
   }
 }
 
@@ -127,7 +144,21 @@ export function parseIntervalMinutes(value: string): number {
   return Number(value.trim().replace(",", "."));
 }
 
+/** The watch schedule a draft saves, or why it can't. */
+export function watchFromDraft(
+  draft: ScheduleDraft,
+  resolve?: Parameters<typeof watchScheduleFromDraft>[3],
+) {
+  const everyMs = Math.round(parseIntervalMinutes(draft.intervalMinutes) * 60_000);
+  return watchScheduleFromDraft(draft.watch, everyMs, draft.filters, resolve);
+}
+
 export function scheduleFromDraft(draft: ScheduleDraft): ScheduledTaskUpsertSchedule | null {
+  if (draft.mode === "watch") {
+    if (!(parseIntervalMinutes(draft.intervalMinutes) >= 1)) return null;
+    const watch = watchFromDraft(draft);
+    return "schedule" in watch ? watch.schedule : null;
+  }
   if (draft.mode === "webhook") {
     const maxDeliveryAgeMinutes = parseMaxDeliveryAge(draft.maxDeliveryAgeMinutes);
     if (maxDeliveryAgeMinutes === undefined) return null;
@@ -237,6 +268,12 @@ function draftSignature(draft: ScheduledTaskDraft): string {
     draft.schedule.coalesceKey,
     draft.schedule.coalesceWindowSeconds,
     draft.schedule.filters.map(({ path, op, value }) => [path, op, value]),
+    draft.schedule.watch.command,
+    draft.schedule.watch.mode,
+    draft.schedule.watch.path,
+    draft.schedule.watch.idPath,
+    draft.schedule.watch.timeoutSeconds,
+    draft.schedule.watch.env.map(({ name, value, secret }) => [name, value, secret]),
     draft.threadMode,
     draft.workspace,
     draft.baseRef,

@@ -84,6 +84,21 @@ describe("scheduleDraftForTask", () => {
       scheduleFromDraft({ ...draft, filters: [{ id: "f1", path: "", op: "exists", value: "" }] }),
     ).toBeNull();
   });
+  it("round-trips a watch, keeping stored variables, and refuses a sub-minute poll", () => {
+    const schedule = {
+      type: "watch",
+      everyMs: 120_000,
+      command: "./dms.sh",
+      mode: "value",
+      path: "state",
+      filters: [{ path: ".", op: "equals", value: "failure" }],
+      env: [{ name: "TOKEN", secret: true }],
+    } as const;
+    const draft = scheduleDraftForTask({ schedule });
+    expect(draft.mode).toBe("watch");
+    expect(scheduleFromDraft(draft)).toEqual({ ...schedule, env: [{ name: "TOKEN" }] });
+    expect(scheduleFromDraft({ ...draft, intervalMinutes: "0.5" })).toBeNull();
+  });
 });
 
 describe("scheduleFromDraft", () => {
