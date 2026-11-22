@@ -85,7 +85,11 @@ jobs:
 
       - name: Install Claude Code
         if: steps.delta.outputs.behind != '0'
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          # Elliot's rule: no AI attribution trailers on commits.
+          mkdir -p ~/.claude
+          echo '{"includeCoAuthoredBy": false, "attribution": {"commit": "", "pr": ""}}' > ~/.claude/settings.json
 
       - name: Resolve conflicts with Claude Code
         id: resolve

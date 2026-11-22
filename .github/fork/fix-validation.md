@@ -9,7 +9,7 @@ Rules:
 
 - Do not disable, skip, or delete tests, lint rules, or type checks.
 - Do not modify upstream code beyond what is needed to keep a fork change compiling.
-- Commit the fix as `fork-sync: adapt fork changes to upstream <short sha>`.
+- Commit the fix as `fork-sync: adapt fork changes to upstream <short sha>`, with no Co-Authored-By or other AI attribution trailer.
 
 If the failure is in upstream code that the fork does not touch (an upstream breakage), do not fix it.
 Print `UPSTREAM-BROKEN:` and the failing check, and stop.
