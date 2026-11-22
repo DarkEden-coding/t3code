@@ -356,6 +356,39 @@ describe("webhook scheduled tasks", () => {
   });
 });
 
+describe("watch scheduled tasks", () => {
+  it("round-trips a watch and keeps stored variables it does not change", () => {
+    const schedule = {
+      type: "watch",
+      everyMs: 300_000,
+      command: "./dms.sh",
+      mode: "items",
+      path: "messages",
+      filters: [{ path: "user", op: "matches", value: "^ana$" }],
+      env: [
+        { name: "TOKEN", secret: true },
+        { name: "CHANNEL", secret: false },
+      ],
+    } as const;
+    const draft = taskToDraft({ ...legacyTask, schedule });
+    expect(draft.scheduleMode).toBe("watch");
+    expect(draft.intervalMinutes).toBe("5");
+    expect(scheduleFromDraft(draft)).toEqual({
+      ...schedule,
+      env: [{ name: "TOKEN" }, { name: "CHANNEL" }],
+    });
+    const [token, channel] = draft.watch.env;
+    expect(
+      scheduleFromDraft({
+        ...draft,
+        watch: { ...draft.watch, env: [{ ...token!, value: "new-token" }, channel!] },
+      }),
+    ).toMatchObject({
+      env: [{ name: "TOKEN", value: "new-token", secret: true }, { name: "CHANNEL" }],
+    });
+  });
+});
+
 describe("scheduled task model defaults", () => {
   const instanceId = ProviderInstanceId.make("codex");
   const projectId = ProjectId.make("project");

@@ -24,6 +24,11 @@ import {
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
 import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
+import {
+  watchDraft,
+  watchScheduleFromDraft,
+  type WatchDraft,
+} from "@t3tools/client-runtime/scheduled-task-watch";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { msg } from "gt-react";
 
@@ -54,6 +59,11 @@ export function scheduleLabel(
   locale: string = getActiveLocale(),
 ): string {
   if (schedule.type === "webhook") return resolve(msg("On webhook"));
+  if (schedule.type === "watch") {
+    return resolve(
+      msg("Watches every {minutes} min", { minutes: Math.round(schedule.everyMs / 60_000) }),
+    );
+  }
   if (schedule.type === "once") {
     return resolve(
       msg("Once, {time}", { time: formatDateTimeTimestamp(schedule.runAt, timestampFormat) }),
@@ -111,7 +121,7 @@ export function validateScheduledTasksSearch(raw: Record<string, unknown>) {
   };
 }
 
-export type ScheduleMode = "fixed" | "once" | "interval" | "webhook";
+export type ScheduleMode = "fixed" | "once" | "interval" | "webhook" | "watch";
 export type WorkspaceMode = "root" | "worktree" | "existing_worktree";
 
 export interface DraftState {
@@ -154,6 +164,17 @@ export interface DraftState {
   readonly filters: ReadonlyArray<WebhookFilterDraft>;
   /** The filter rows the form opened with. */
   readonly savedFilters: ReadonlyArray<WebhookFilterDraft>;
+  /** Command, detection and env for a watch; the poll interval is `intervalMinutes`. */
+  readonly watch: WatchDraft;
+}
+
+function watchFromDraft(draft: DraftState, resolve: MessageResolver = m) {
+  return watchScheduleFromDraft(
+    draft.watch,
+    Math.round(Number(draft.intervalMinutes) * 60_000),
+    draft.filters,
+    resolve,
+  );
 }
 
 export const WEBHOOK_SIGNATURE_DEFAULTS = {
@@ -182,6 +203,12 @@ export function scheduleDraftErrors(draft: DraftState, resolve: MessageResolver 
   }
   if (draft.scheduleMode === "fixed" && !draft.timeOfDay)
     return invalidRunTime(resolve(msg("Pick a time.")));
+  if (draft.scheduleMode === "watch") {
+    const watch = watchFromDraft(draft, resolve);
+    return "error" in watch
+      ? [{ title: resolve(msg("Invalid watch settings")), description: watch.error }]
+      : [];
+  }
   if (draft.scheduleMode !== "webhook") return [];
   if (parseMaxDeliveryAge(draft.maxDeliveryAgeMinutes) === undefined)
     return [
@@ -302,6 +329,10 @@ export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedul
     const everyMs = Math.round(Number(draft.intervalMinutes) * 60_000);
     return { type: "interval", everyMs };
   }
+  if (draft.scheduleMode === "watch") {
+    const watch = watchFromDraft(draft);
+    return "schedule" in watch ? watch.schedule : null;
+  }
   const selectedEveryDay = draft.weekdays.size === 0 || draft.weekdays.size === 7;
   return {
     type: "fixed_time",
@@ -312,7 +343,9 @@ export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedul
 
 export function taskToDraft(task: ScheduledTask): DraftState {
   const schedule = task.schedule;
-  const filters = webhookFilterDrafts(schedule.type === "webhook" ? schedule.filters : undefined);
+  const filters = webhookFilterDrafts(
+    schedule.type === "webhook" || schedule.type === "watch" ? schedule.filters : undefined,
+  );
   const weekdays =
     schedule.type === "fixed_time" && schedule.weekdays && schedule.weekdays.length > 0
       ? new Set(schedule.weekdays)
@@ -324,7 +357,9 @@ export function taskToDraft(task: ScheduledTask): DraftState {
     enabled: task.enabled,
     scheduleMode: schedule.type === "fixed_time" ? "fixed" : schedule.type,
     intervalMinutes:
-      schedule.type === "interval" ? String(Math.max(1, schedule.everyMs / 60_000)) : "15",
+      schedule.type === "interval" || schedule.type === "watch"
+        ? String(Math.max(1, schedule.everyMs / 60_000))
+        : "15",
     // A time input shows nothing for an unpadded hour such as 9:05, which agents may save.
     timeOfDay: schedule.type === "fixed_time" ? schedule.timeOfDay.padStart(5, "0") : "09:00",
     runAt: schedule.type === "once" ? toDateTimeLocalValue(new Date(schedule.runAt)) : "",
@@ -369,6 +404,7 @@ export function taskToDraft(task: ScheduledTask): DraftState {
         : "",
     filters,
     savedFilters: filters,
+    watch: watchDraft(schedule),
   };
 }
 

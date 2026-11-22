@@ -675,6 +675,7 @@ function summaryActionPriority(action: ToolGroupAction | T3McpToolSummaryAction)
     case "workflow-stop":
     case "background-wait":
     case "schedule-create":
+    case "schedule-watch":
     case "schedule-update":
     case "schedule-delete":
     case "schedule-run":

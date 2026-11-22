@@ -284,7 +284,11 @@ export type ScheduledTaskWatchSchedule = typeof ScheduledTaskWatchSchedule.Type;
 
 /** A variable's value on save. Name only keeps the stored value. */
 export const ScheduledTaskUpsertWatchEnvVar = Schema.Union([
-  Schema.Struct({ name: WatchEnvName, value: Schema.String.check(Schema.isMaxLength(32_768)) }),
+  Schema.Struct({
+    name: WatchEnvName,
+    value: Schema.String.check(Schema.isMaxLength(32_768)),
+    secret: Schema.optional(Schema.Boolean).annotate({ description: "Hide it in errors." }),
+  }),
   Schema.Struct({
     name: WatchEnvName,
     secretRef: SecretRef.annotate({ description: "From `request_secret`. Spent by this save." }),

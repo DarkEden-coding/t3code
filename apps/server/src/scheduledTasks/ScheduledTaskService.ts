@@ -1645,7 +1645,11 @@ export const layer = Layer.effect(
         schedule.env,
         (variable): Effect.Effect<CommandWatcher.WatchEnvEntry, ScheduledTaskError> =>
           "value" in variable
-            ? Effect.succeed({ name: variable.name, value: variable.value, secret: false })
+            ? Effect.succeed({
+                name: variable.name,
+                value: variable.value,
+                secret: variable.secret === true,
+              })
             : "reference" in variable
               ? Effect.succeed({ name: variable.name, reference: variable.reference })
               : "secretRef" in variable

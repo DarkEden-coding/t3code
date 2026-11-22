@@ -209,6 +209,23 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "schedule-watch": {
+      const count = countEntities(entityIds("scheduledTaskId"));
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Set up {count} command watcher} other {Set up {count} command watchers}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to set up {count} command watcher} other {Tried to set up {count} command watchers}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "schedule-update": {
       const count = countEntities(entityIds("scheduledTaskId"));
       label = done

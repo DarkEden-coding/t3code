@@ -54,6 +54,13 @@ function taskScheduleLine(
       {scheduleLabel(task.schedule, timestampFormat, timeZone, task.nextRunAt, resolve)}
       {task.blockedByPolicy !== undefined ? (
         ` · ${task.blockedByPolicy}`
+      ) : task.enabled && (task.watch?.consecutiveFailures ?? 0) > 0 ? (
+        <>
+          {" · "}
+          <T context="automation state">polls failing</T>
+        </>
+      ) : task.enabled && task.schedule.type === "watch" ? (
+        ""
       ) : task.enabled && task.nextRunAt !== null ? (
         <>
           {" · "}
@@ -191,7 +198,9 @@ export function ThreadAutomationsPanel(props: {
               <span
                 className={cn(
                   "absolute -right-1 -top-1 size-1.5 rounded-full",
-                  STATUS_DOT_CLASS[task.lastRunStatus],
+                  STATUS_DOT_CLASS[
+                    (task.watch?.consecutiveFailures ?? 0) > 0 ? "failed" : task.lastRunStatus
+                  ],
                 )}
                 aria-hidden
               />
@@ -235,8 +244,8 @@ export function ThreadAutomationsPanel(props: {
                 <T>Edit automation</T>
               </TooltipPopup>
             </Tooltip>
-            {/* Webhook tasks need a request from their URL. */}
-            {task.schedule.type === "webhook" ? null : (
+            {/* Webhook tasks need a request from their URL; watch tasks need a change. */}
+            {task.schedule.type === "webhook" || task.schedule.type === "watch" ? null : (
               <Tooltip>
                 <TooltipTrigger
                   render={
