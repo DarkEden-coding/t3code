@@ -1422,7 +1422,6 @@ ${MAC_HARDENED_RUNTIME_ENTITLEMENTS}
 `;
 }
 
-
 export function resolveFffNativeDependencies(
   platform: typeof BuildPlatform.Type,
   arch: typeof BuildArch.Type,

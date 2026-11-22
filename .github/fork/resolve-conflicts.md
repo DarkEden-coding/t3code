@@ -2,6 +2,7 @@ You are resolving a merge of upstream T3 Code (pingdotgg/t3code `main`) into Ell
 The merge is in progress in this checkout. `git diff --name-only --diff-filter=U` lists the conflicted files.
 
 Rules:
+
 - Upstream is the base truth. Keep every upstream change unless it directly collides with a fork change.
 - Keep the intent of each fork change. Fork changes are the commits in `git log --no-merges upstream/main..HEAD`
   and `.github/fork/FORK_CHANGES.md` describes them. When upstream refactored code a fork
@@ -13,6 +14,7 @@ Rules:
 - Do not touch files that are not conflicted unless a resolution requires it, such as a renamed import.
 
 When every conflict is resolved:
+
 1. Run `node scripts/check-changed.ts upstream/main` and fix what it reports.
 2. `git add` the resolved files and run `git commit --no-edit` to finish the merge.
 3. Print a short summary: each conflicted file, what you kept from each side, and anything you were unsure about.
