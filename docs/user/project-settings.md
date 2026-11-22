@@ -105,8 +105,8 @@ Deleting a thread also deletes tasks that post into that thread. Tasks that star
 a new thread on each run survive deletion of their previous threads.
 
 You can edit, pause, resume, run immediately, or delete a task from the list.
-Webhook tasks only run when their URL is called, so they can't be run
-immediately.
+Webhook tasks only run when their URL is called, and command watchers only
+when their command's output changes, so neither can be run immediately.
 Leaving an edited form asks before discarding unsaved changes.
 
 ## Webhook automations
@@ -149,7 +149,9 @@ when every filter matches; other requests are answered normally, logged as
 **Filtered** with the first filter that failed, and start nothing. Values
 compare as text, and a value that is an object or a list only passes
 **exists**. Separate **is one of** values with commas; a value can't contain
-a comma or start or end with a space.
+a comma or start or end with a space. **matches regex** tests a JavaScript regular
+expression of up to 200 characters against the first 10,000 characters of the
+value; the task can't be saved with an invalid one.
 
 To suppress repeated deliveries, set a **Duplicate request key** template, such as
 `{{headers.delivery-id}}`. The same key is ignored for seven days per task.
@@ -176,6 +178,42 @@ T3 Connect URL for up to 24 hours and delivers them when the environment
 returns. Leave it off if you don't want request bodies stored outside your
 machine. To skip requests that waited too long, set **Skip requests older
 than** on the task.
+
+## Command watchers
+
+Choose **On change** as a task's schedule to have T3 run a command every few
+minutes and wake the agent only when its output changes, such as a script that
+lists your new DMs or prints a CI status. Polling runs no model, so a quiet
+check costs nothing. The command runs in the project folder on the task's
+environment, every 1 minute or more, and times out after 60 seconds unless you
+set another limit of up to 300.
+
+The first poll only records what the command printed. After that:
+
+- **New items** reads a JSON list, at **List path** or the whole output, and
+  runs the prompt for items whose **Item id path** value it hasn't seen. Leave
+  the id path empty to use `id`. Items without one are told apart by their
+  whole content.
+- **A changed value** runs the prompt when the value at **Value path**, or the
+  whole output, differs from the last poll. JSON is compared by content, so key
+  order doesn't matter; other output must match exactly.
+
+**Filters** work as for webhooks, with paths into each item or into the value,
+and `.` for the item itself. An item that fails a filter doesn't run the prompt
+and isn't reported later. In the prompt, `{{items}}`, `{{items.length}}`,
+`{{value}}` and `{{previous}}` insert the change, wrapped in `<watch-data-…>`
+tags and marked as untrusted, as with webhook values. One run receives at most
+50 items and is told how many were left out.
+
+Put tokens in **Environment variables**, not in the command. Mark a variable
+**Secret** to keep its value out of the task; T3 stores it separately, never
+shows it again, and deletes it with the task. Leave a stored value empty to
+keep it. Agents can also pass a [secret reference](./secrets.md), which is read
+at each poll. Agents can create watchers only when they run with full access.
+
+A failing command never counts as a change. After three failures in a row the
+task's thread gets one message with the error, and another when the command
+works again; a task without a thread only shows the error in the list.
 
 ## Defaults and inheritance
 
