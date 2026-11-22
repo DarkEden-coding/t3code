@@ -98,6 +98,7 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as CommandWatcher from "../scheduledTasks/CommandWatcher.ts";
 import * as DeviceHost from "../device/DeviceHost.ts";
 import * as DeviceService from "../device/DeviceService.ts";
 import * as PreviewManager from "../preview/Manager.ts";
@@ -400,6 +401,7 @@ const layerScheduledTasksTest = ScheduledTaskService.layer.pipe(
         ),
       ).pipe(Layer.provide(ProjectionStore.layer)),
       Layer.mock(SecretRequests.SecretRequests)({}),
+      Layer.mock(CommandWatcher.CommandWatcher)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
         isScratchProject: () => Effect.succeed(false),

@@ -24,6 +24,7 @@ import {
   ScheduledTaskRunStatus,
   ScheduledTaskSchedule,
   ScheduledTaskUpsertSchedule,
+  ScheduledTaskWatchStatus,
 } from "./scheduledTask.ts";
 import { ProviderInteractionMode, ProviderRequestKind, RuntimeMode } from "./providerPolicy.ts";
 import { PullRequestState } from "./pullRequest.ts";
@@ -69,7 +70,7 @@ const OrchestratorMcpSchedule = Schema.Union([
   OrchestratorMcpScheduleFromJsonString,
 ]).annotate({
   description:
-    "Trigger: {type:'interval',everyMs}, {type:'fixed_time',timeOfDay,weekdays?}, {type:'once',runAt}, or {type:'webhook'}.",
+    "Trigger: {type:'interval',everyMs}, {type:'fixed_time',timeOfDay,weekdays?}, {type:'once',runAt}, {type:'webhook'}, or {type:'watch',everyMs,command,mode} (needs full-access).",
 });
 
 const OrchestratorMcpTargetOptionsFromRecord = Schema.Record(
@@ -770,6 +771,10 @@ export const OrchestratorMcpScheduledTask = Schema.Struct({
       "Webhook bearer URL, returned only on task creation to callers allowed to run it. Lists and updates omit it; the user can copy it from Settings. Creation may omit it without T3 Connect remote access or run permission.",
   }),
   webhookSignature: Schema.optional(Schema.Literals(["none", "set"])),
+  watch: Schema.optional(ScheduledTaskWatchStatus).annotate({
+    description:
+      "Watch tasks: last poll and its error. After 3 failed polls the bound thread is told once.",
+  }),
   blockedByPolicy: Schema.optional(Schema.String).annotate({
     description: "Present when an administrator's policy stops this task from running.",
   }),

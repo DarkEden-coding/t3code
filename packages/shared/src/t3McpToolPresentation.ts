@@ -12,6 +12,7 @@ export type T3McpToolSummaryAction =
   | "task-cancel"
   | "schedule-run"
   | "schedule-create"
+  | "schedule-watch"
   | "schedule-list"
   | "schedule-update"
   | "schedule-delete"
@@ -538,8 +539,12 @@ const ACTION_SUMMARIES: Readonly<
 > = {
   t3_thread_configure: ({ modelSelection }) =>
     modelSelection === undefined ? "thread-configuration" : "thread-configure",
-  schedule_task: ({ scheduledTaskId }) =>
-    scheduledTaskId === undefined ? "schedule-create" : "schedule-update",
+  schedule_task: ({ scheduledTaskId, schedule }) =>
+    scheduledTaskId !== undefined
+      ? "schedule-update"
+      : asSummaryInput(schedule)?.type === "watch"
+        ? "schedule-watch"
+        : "schedule-create",
 };
 
 export function resolveT3McpSummaryAction(

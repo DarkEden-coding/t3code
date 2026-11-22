@@ -22,7 +22,6 @@ import {
   scheduledTaskThreadMode,
 } from "@t3tools/contracts";
 import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
-import type { MenuAction } from "@react-native-menu/menu";
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 import {
   isAtomCommandInterrupted,
@@ -45,7 +44,7 @@ import type { MessageResolver } from "../../i18n/messages";
 import { useRef, useState, type ReactNode } from "react";
 import { useFocusEffect, useNavigation, usePreventRemove } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { AppState, Platform, Pressable, TextInput as RNTextInput, View } from "react-native";
+import { AppState, Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Button } from "../../components/ui/Button";
@@ -73,6 +72,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { resolveNewTaskBranchLabel } from "../threads/new-task-context-presentation";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
 import { ScheduledTaskPromptField } from "./components/ScheduledTaskPromptField";
+import { FormField, SelectRow } from "./components/ScheduledTaskFormRows";
+import { ScheduledTaskWatchFields } from "./components/ScheduledTaskWatchFields";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
@@ -84,6 +85,7 @@ import {
   scheduledTaskDefaultModel,
   scheduleFromDraft,
   unbindDraftFromThread,
+  watchFromDraft,
   type ScheduledTaskDraft as Draft,
 } from "./scheduledTaskDraft";
 import { settingsTargetsForProject } from "./settings-environment-filter.logic";
@@ -100,6 +102,10 @@ import {
   formatNextScheduledTaskRun,
   formatScheduledTaskInterval,
 } from "./scheduledTaskPresentation";
+import {
+  DEFAULT_WATCH_PROMPTS,
+  formatWatchFailure,
+} from "@t3tools/client-runtime/scheduled-task-watch";
 
 type ScheduledTaskRoutes = {
   SettingsScheduledTaskNew: undefined;
@@ -131,6 +137,11 @@ function describeSchedule(
   locale: string,
 ): string {
   if (task.schedule.type === "webhook") return resolve(msg("On webhook"));
+  if (task.schedule.type === "watch") {
+    return resolve(
+      msg("Watches every {minutes} min", { minutes: Math.round(task.schedule.everyMs / 60_000) }),
+    );
+  }
   if (task.schedule.type === "once") {
     const runAt = new Date(task.schedule.runAt);
     return resolve(
@@ -197,105 +208,10 @@ function repeatLabel(
   );
 }
 
-function FormField(props: {
-  readonly label: string;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-  readonly keyboardType?: "decimal-pad" | "number-pad";
-  readonly disabled?: boolean;
-  readonly placeholder?: string;
-  readonly borderTop?: boolean;
-}) {
-  return (
-    <View
-      className={
-        props.borderTop ? "gap-2 border-t border-border-subtle px-4 py-3" : "gap-2 px-4 py-3"
-      }
-    >
-      <Text className="text-sm text-foreground-muted">{props.label}</Text>
-      <RNTextInput
-        accessibilityLabel={props.label}
-        value={props.value}
-        readOnly={props.disabled}
-        onChangeText={props.onChange}
-        textAlignVertical="center"
-        keyboardType={props.keyboardType}
-        placeholder={props.placeholder}
-        placeholderTextColorClassName="accent-foreground-muted"
-        className="min-h-8 font-sans text-base text-foreground"
-      />
-    </View>
-  );
-}
-
-function SelectRow(props: {
-  readonly label: string;
-  readonly value: string;
-  readonly valueIcon?: ReactNode;
-  readonly actions: MenuAction[];
-  readonly onSelect: (id: string) => void;
-  readonly borderTop?: boolean;
-}) {
-  const gt = useGT();
-  const value = (
-    <View className="min-w-0 flex-1 flex-row items-center justify-end gap-2">
-      {props.valueIcon}
-      <Text
-        textRole="footnote"
-        className="shrink text-right text-foreground-muted"
-        numberOfLines={1}
-      >
-        {props.value}
-      </Text>
-    </View>
-  );
-  if (props.actions.length === 0) {
-    return (
-      <View
-        className={
-          props.borderTop
-            ? "min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3"
-            : "min-h-14 flex-row items-center gap-3 px-4 py-3"
-        }
-      >
-        <Text textRole="body" className="text-foreground">
-          {props.label}
-        </Text>
-        {value}
-      </View>
-    );
-  }
-  return (
-    <Menu
-      actions={props.actions}
-      onPressAction={({ nativeEvent }) => props.onSelect(nativeEvent.event)}
-    >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={gt("{label}, {value}", { label: props.label, value: props.value })}
-        className={
-          props.borderTop
-            ? "min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3 active:opacity-70"
-            : "min-h-14 flex-row items-center gap-3 px-4 py-3 active:opacity-70"
-        }
-      >
-        <Text textRole="body" className="text-foreground">
-          {props.label}
-        </Text>
-        {value}
-        <SymbolView
-          name="chevron.down"
-          size={14}
-          tintColorClassName="accent-chevron"
-          type="monochrome"
-        />
-      </Pressable>
-    </Menu>
-  );
-}
-
 function WebhookFilterRows(props: {
   readonly filters: ReadonlyArray<WebhookFilterDraft>;
+  readonly hint: ReactNode;
+  readonly pathPlaceholder: string;
   readonly disabled: boolean;
   readonly onChange: (
     update: (filters: ReadonlyArray<WebhookFilterDraft>) => ReadonlyArray<WebhookFilterDraft>,
@@ -333,7 +249,7 @@ function WebhookFilterRows(props: {
           <FormField
             label={gt("Path", { $context: "webhook payload field path" })}
             value={filter.path}
-            placeholder="body.action"
+            placeholder={props.pathPlaceholder}
             disabled={props.disabled}
             onChange={(path) => update(filter.id, { path })}
           />
@@ -382,12 +298,7 @@ function WebhookFilterRows(props: {
         </Pressable>
       ) : null}
       {props.filters.length > 0 ? (
-        <Text className="px-4 pb-3 text-sm text-foreground-muted">
-          <T>
-            Runs only when every filter matches. Other requests are logged as filtered. Separate “is
-            one of” values with commas; a value can't contain a comma.
-          </T>
-        </Text>
+        <Text className="px-4 pb-3 text-sm text-foreground-muted">{props.hint}</Text>
       ) : null}
     </>
   );
@@ -800,6 +711,9 @@ function TaskForm({
     config?.environment.capabilities.oneTimeSchedules === true ||
     draft.task?.schedule.type === "once";
   const offersThreadModes = config?.environment.capabilities.scheduledTaskThreadModes === true;
+  const offersWatch =
+    config?.environment.capabilities.commandWatchers === true ||
+    draft.task?.schedule.type === "watch";
   const save = async () => {
     const current = readEditor();
     if (!current || current.environmentId !== environmentId) return;
@@ -842,6 +756,13 @@ function TaskForm({
         ),
       );
       return;
+    }
+    if (draft.schedule.mode === "watch") {
+      const watch = watchFromDraft(draft.schedule, m);
+      if ("error" in watch) {
+        Dialog.alert(gt("Invalid watch settings"), watch.error);
+        return;
+      }
     }
     const parsedFilters = parseWebhookFilterDrafts(draft.schedule.filters, m);
     if (draft.schedule.mode === "webhook" && "error" in parsedFilters) {
@@ -1166,6 +1087,7 @@ function TaskForm({
                 ...(webhookDenial === undefined || draft.schedule.mode === "webhook"
                   ? [{ value: "webhook" as const, label: gt("On webhook") }]
                   : []),
+                ...(offersWatch ? [{ value: "watch" as const, label: gt("On change") }] : []),
               ]}
               selected={draft.schedule.mode}
               onSelect={(mode) => {
@@ -1173,10 +1095,13 @@ function TaskForm({
                 setRunAtPicker(null);
                 setDraft((current) => ({
                   ...current,
-                  prompt:
-                    mode === "webhook" && !current.prompt.trim()
+                  prompt: current.prompt.trim()
+                    ? current.prompt
+                    : mode === "webhook"
                       ? DEFAULT_WEBHOOK_PROMPT
-                      : current.prompt,
+                      : mode === "watch"
+                        ? DEFAULT_WATCH_PROMPTS[current.schedule.watch.mode]
+                        : current.prompt,
                   schedule: {
                     ...current.schedule,
                     mode,
@@ -1286,6 +1211,43 @@ function TaskForm({
                 reason: webhookDenial,
               })}
             </Text>
+          ) : draft.schedule.mode === "watch" ? (
+            <>
+              <ScheduledTaskWatchFields
+                watch={draft.schedule.watch}
+                intervalMinutes={draft.schedule.intervalMinutes}
+                disabled={saving}
+                onChange={(update) =>
+                  setDraft((current) => ({
+                    ...current,
+                    schedule: { ...current.schedule, watch: update(current.schedule.watch) },
+                  }))
+                }
+                onIntervalChange={(intervalMinutes) =>
+                  setDraft((current) => ({
+                    ...current,
+                    schedule: { ...current.schedule, intervalMinutes },
+                  }))
+                }
+              />
+              <WebhookFilterRows
+                filters={draft.schedule.filters}
+                hint={
+                  <T>
+                    Run only for new items, or a new value, that every filter matches. Paths are
+                    inside each item; a single dot is the item itself.
+                  </T>
+                }
+                pathPlaceholder="user.name"
+                disabled={saving}
+                onChange={(update) =>
+                  setDraft((current) => ({
+                    ...current,
+                    schedule: { ...current.schedule, filters: update(current.schedule.filters) },
+                  }))
+                }
+              />
+            </>
           ) : draft.schedule.mode === "once" ? (
             (["date", "time"] as const).map((field) => {
               const runAt = new Date(draft.schedule.runAt);
@@ -1366,6 +1328,13 @@ function TaskForm({
               />
               <WebhookFilterRows
                 filters={draft.schedule.filters}
+                hint={
+                  <T>
+                    Runs only when every filter matches. Other requests are logged as filtered.
+                    Separate “is one of” values with commas; a value can't contain a comma.
+                  </T>
+                }
+                pathPlaceholder="body.action"
                 disabled={saving}
                 onChange={(update) =>
                   setDraft((current) => ({
@@ -1700,7 +1669,7 @@ function EnvironmentTasks({
                   ? gt("{schedule} · Paused", {
                       schedule: describeSchedule(task, tasks.data?.timeZone, m, locale),
                     })
-                  : task.nextRunAt
+                  : task.nextRunAt && task.schedule.type !== "watch"
                     ? gt("{schedule} · {nextRun}", {
                         schedule: describeSchedule(task, tasks.data?.timeZone, m, locale),
                         nextRun: formatNextScheduledTaskRun(task.nextRunAt, now, m),
@@ -1719,6 +1688,11 @@ function EnvironmentTasks({
                   </T>
                 </Text>
               ) : null}
+              {task.watch?.lastError ? (
+                <Text className="text-sm text-danger-foreground" numberOfLines={2}>
+                  {formatWatchFailure(task.watch, m)}
+                </Text>
+              ) : null}
             </Pressable>
             <Menu
               actions={[
@@ -1731,7 +1705,7 @@ function EnvironmentTasks({
                   title: task.enabled ? gt("Pause") : gt("Resume"),
                   attributes: { disabled: !canOperate },
                 },
-                ...(task.schedule.type === "webhook"
+                ...(task.schedule.type === "webhook" || task.schedule.type === "watch"
                   ? []
                   : [{ id: "run", title: gt("Run now"), attributes: { disabled: !canOperate } }]),
                 {

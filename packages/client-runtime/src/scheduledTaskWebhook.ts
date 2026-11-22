@@ -1,6 +1,7 @@
 import {
   MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
   MAX_WEBHOOK_FILTERS,
+  type ScheduledTaskWatchFilter,
   ScheduledTaskWebhookFilter,
   type ScheduledTaskWebhookFilterOp,
 } from "@t3tools/contracts";
@@ -40,6 +41,7 @@ export const WEBHOOK_FILTER_OPS: ReadonlyArray<{
   { op: "notEquals", label: msg("does not equal") },
   { op: "in", label: msg("is one of") },
   { op: "startsWith", label: msg("starts with") },
+  { op: "matches", label: msg("matches regex") },
   { op: "exists", label: msg("exists") },
 ];
 
@@ -59,7 +61,7 @@ export function removeWebhookFilterDraft(
 }
 
 export function webhookFilterDrafts(
-  filters: ReadonlyArray<ScheduledTaskWebhookFilter> | undefined,
+  filters: ReadonlyArray<ScheduledTaskWebhookFilter | ScheduledTaskWatchFilter> | undefined,
 ): ReadonlyArray<WebhookFilterDraft> {
   return (filters ?? []).map((filter) => ({
     id: nextWebhookFilterDraftId(),
@@ -70,62 +72,77 @@ export function webhookFilterDrafts(
   }));
 }
 
-const decodeFilter = Schema.decodeUnknownOption(ScheduledTaskWebhookFilter);
+const decodeWebhookFilter = Schema.decodeUnknownOption(ScheduledTaskWebhookFilter);
+
+function draftToFilterInput(draft: WebhookFilterDraft): unknown {
+  const path = draft.path.trim();
+  return draft.op === "exists"
+    ? { path, op: draft.op }
+    : draft.op === "in"
+      ? {
+          path,
+          op: draft.op,
+          value: draft.value
+            .split(",")
+            .map((item) => item.trim())
+            .filter((item) => item !== ""),
+        }
+      : { path, op: draft.op, value: draft.value };
+}
 
 /**
- * Checks each row with the server's own schema, so a draft that parses here
- * also saves. The error names the first row that would not.
+ * Checks each row with the server's own schema, so a draft that parses here also saves. The error
+ * names the first row that would not. Webhook and watch filters differ only in their paths.
  */
+export function parseFilterDrafts<Filter>(
+  drafts: ReadonlyArray<WebhookFilterDraft>,
+  decode: (input: unknown) => Option.Option<Filter>,
+  rowError: (row: { readonly number: number; readonly op: ScheduledTaskWebhookFilterOp }) => string,
+  resolve: MFunctionType = mFallback,
+): { readonly filters: ReadonlyArray<Filter> } | { readonly error: string } {
+  if (drafts.length > MAX_WEBHOOK_FILTERS) {
+    return { error: resolve(msg("Use at most {max} filters.", { max: MAX_WEBHOOK_FILTERS })) };
+  }
+  const filters: Filter[] = [];
+  for (const [index, draft] of drafts.entries()) {
+    const filter = decode(draftToFilterInput(draft));
+    if (Option.isNone(filter)) return { error: rowError({ number: index + 1, op: draft.op }) };
+    filters.push(filter.value);
+  }
+  return { filters };
+}
+
 export function parseWebhookFilterDrafts(
   drafts: ReadonlyArray<WebhookFilterDraft>,
   resolve: MFunctionType = mFallback,
 ): { readonly filters: ReadonlyArray<ScheduledTaskWebhookFilter> } | { readonly error: string } {
-  if (drafts.length > MAX_WEBHOOK_FILTERS) {
-    return { error: resolve(msg("Use at most {max} filters.", { max: MAX_WEBHOOK_FILTERS })) };
-  }
-  const filters: ScheduledTaskWebhookFilter[] = [];
-  for (const [index, draft] of drafts.entries()) {
-    const path = draft.path.trim();
-    const filter = decodeFilter(
-      draft.op === "exists"
-        ? { path, op: draft.op }
-        : draft.op === "in"
-          ? {
-              path,
-              op: draft.op,
-              value: draft.value
-                .split(",")
-                .map((item) => item.trim())
-                .filter((item) => item !== ""),
-            }
-          : { path, op: draft.op, value: draft.value },
-    );
-    if (Option.isNone(filter)) {
-      return {
-        error:
-          draft.op === "exists"
+  return parseFilterDrafts(
+    drafts,
+    decodeWebhookFilter,
+    ({ number, op }) =>
+      op === "exists"
+        ? resolve(msg("Filter {number} needs a path under body, headers or query.", { number }))
+        : op === "in"
+          ? resolve(
+              msg(
+                "Filter {number} needs a path under body, headers or query, and at least one value.",
+                { number },
+              ),
+            )
+          : op === "matches"
             ? resolve(
-                msg("Filter {number} needs a path under body, headers or query.", {
-                  number: index + 1,
-                }),
-              )
-            : draft.op === "in"
-              ? resolve(
-                  msg(
-                    "Filter {number} needs a path under body, headers or query, and at least one value.",
-                    { number: index + 1 },
-                  ),
-                )
-              : resolve(
-                  msg("Filter {number} needs a path under body, headers or query, and a value.", {
-                    number: index + 1,
-                  }),
+                msg(
+                  "Filter {number} needs a path under body, headers or query, and a valid regex.",
+                  { number },
                 ),
-      };
-    }
-    filters.push(filter.value);
-  }
-  return { filters };
+              )
+            : resolve(
+                msg("Filter {number} needs a path under body, headers or query, and a value.", {
+                  number,
+                }),
+              ),
+    resolve,
+  );
 }
 
 /**

@@ -32,6 +32,7 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { OrchestratorDispatchError } from "../orchestration-v2/Orchestrator.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as CommandWatcher from "./CommandWatcher.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
@@ -221,6 +222,7 @@ it.effect(
                 }),
                 Layer.mock(ThreadManagementService.ThreadManagementService)({}),
                 Layer.mock(SecretRequests.SecretRequests)({}),
+                Layer.mock(CommandWatcher.CommandWatcher)({}),
                 NodeCrypto.layer,
                 Scheduler.layer,
               ),
@@ -319,6 +321,7 @@ it.effect(
                 }),
                 Layer.mock(ThreadManagementService.ThreadManagementService)({}),
                 Layer.mock(SecretRequests.SecretRequests)({}),
+                Layer.mock(CommandWatcher.CommandWatcher)({}),
                 NodeCrypto.layer,
                 Scheduler.layer,
               ),
@@ -371,6 +374,7 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
             getThreadShell: () => Effect.succeed(threadShell(ProjectId.make("project:test"))),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -471,6 +475,7 @@ it.effect.each([
               ),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -542,6 +547,7 @@ it.effect("a one-time task is removed once its turn completes", () =>
               ),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -615,6 +621,7 @@ it.effect("a paused one-time task run by hand before its time is kept", () =>
               ),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -687,6 +694,7 @@ it.effect("a bound run follows its thread when promotion moves it mid-send", () 
               Ref.modify(shellProjects, ([next, ...rest]) => [threadShell(next ?? promoted), rest]),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -758,6 +766,7 @@ it.effect("a fresh-session task launches one thread, then starts each later run 
               ]).pipe(Effect.as({} as never)),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -851,6 +860,7 @@ it.effect("a refused dispatch records its refusal, and opaque causes stay generi
               Ref.get(failure).pipe(Effect.flatMap((cause) => Effect.fail(refused(cause)))),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -904,6 +914,7 @@ it.effect("a first run whose thread was deleted before it bound removes the task
               Effect.succeed({ deletedAt: DateTime.makeUnsafe("2026-11-03T00:00:00Z") } as never),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -956,6 +967,7 @@ it.effect.each(["recreated under the same id", "moved to another project"] as co
             }),
             Layer.mock(ThreadManagementService.ThreadManagementService)({}),
             Layer.mock(SecretRequests.SecretRequests)({}),
+            Layer.mock(CommandWatcher.CommandWatcher)({}),
             Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
               namedProjectsRoot: "/projects",
               isScratchProject: () => Effect.succeed(false),
@@ -1014,6 +1026,7 @@ it.effect("refuses saving an enabled task above the policy ceiling", () =>
             getThreadShell: () => Effect.succeed(threadShell(ProjectId.make("project:test"))),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -1096,6 +1109,7 @@ it.effect("checks a task's destination thread only when the destination changes"
           Layer.mock(SecretRequests.SecretRequests)({
             consume: () => Ref.update(consumed, (count) => count + 1).pipe(Effect.as("secret")),
           }),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
@@ -1174,6 +1188,7 @@ it.effect("a run interrupted right after it reserves the task does not block the
           }),
           Layer.mock(ThreadManagementService.ThreadManagementService)({}),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),

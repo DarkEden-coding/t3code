@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MAX_FILTER_MATCH_INPUT_LENGTH } from "@t3tools/contracts";
 
 import { findFailedWebhookFilter } from "./webhookFilter.ts";
 import type { WebhookRequest } from "./webhookTemplate.ts";
@@ -45,6 +46,7 @@ describe("findFailedWebhookFilter", () => {
           { path: "body.issue.labels[].name", op: "equals", value: "needs more info" },
           { path: "body.issue.labels[].name", op: "in", value: ["needs more info", "triage"] },
           { path: "body.issue.labels[].name", op: "startsWith", value: "needs" },
+          { path: "body.issue.labels[].name", op: "matches", value: "^needs\\s+more" },
           { path: "body.issue.labels[].name", op: "exists" },
         ],
         issueComment,
@@ -95,15 +97,34 @@ describe("findFailedWebhookFilter", () => {
     );
   });
 
+  it("tests a regex against at most the capped input length", () => {
+    const longBody = {
+      ...issueComment,
+      bodyText: JSON.stringify({ text: `${"a".repeat(MAX_FILTER_MATCH_INPUT_LENGTH)}b` }),
+    };
+    assert.deepEqual(
+      findFailedWebhookFilter([{ path: "body.text", op: "matches", value: "b$" }], longBody),
+      { index: 0, path: "body.text" },
+    );
+  });
+
   it("still compares scalars without a wildcard", () => {
     assert.isNull(
       findFailedWebhookFilter(
         [
           { path: "body.action", op: "equals", value: "created" },
           { path: "body.comment.user.type", op: "notEquals", value: "Bot" },
+          { path: "body.issue.number", op: "matches", value: "^\\d+$" },
         ],
         issueComment,
       ),
+    );
+    assert.deepEqual(
+      findFailedWebhookFilter(
+        [{ path: "body.comment.user.login", op: "matches", value: "^bot-" }],
+        issueComment,
+      ),
+      { index: 0, path: "body.comment.user.login" },
     );
     // A list without a wildcard in the path only satisfies exists.
     assert.deepEqual(

@@ -29,6 +29,7 @@ import * as Stream from "effect/Stream";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as CommandWatcher from "../scheduledTasks/CommandWatcher.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
@@ -351,6 +352,7 @@ it.effect.each(deliveries)(
                   }),
                 ),
                 Layer.provide(Layer.mock(SecretRequests.SecretRequests)({})),
+                Layer.provide(Layer.mock(CommandWatcher.CommandWatcher)({})),
                 Layer.provide(
                   CommandReceiptStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
                 ),

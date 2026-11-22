@@ -18,6 +18,23 @@ which upstream files it touches, and what must survive a merge. Keep it short.
   otherwise the hardened-runtime entitlements (`MAC_HARDENED_RUNTIME_ENTITLEMENTS`) are still applied.
 - Must survive: a signed mac build with no provisioning profile still succeeds and keeps the camera and mic entitlements.
 
+## Command watchers (`watch` schedule type)
+
+- A scheduled task can poll a shell command and run its prompt only when the output changes.
+  Contracts: `packages/contracts/src/scheduledTask.ts` (`ScheduledTaskWatchSchedule`, the shared
+  filter union with the `matches` op), `environment.ts` (`commandWatchers` capability), `orchestratorMcp.ts`.
+- Server: new `apps/server/src/scheduledTasks/{CommandWatcher,watchDetect,watchState}.ts`; hooks in
+  `ScheduledTaskService.ts` (`pollWatch`, `runDueTasks`, upsert, delete, `runNow`), `Schedule.ts`,
+  `webhookFilter.ts`, `webhookTemplate.ts` (`renderUntrustedTemplate`), `runtimeLayer.ts`,
+  `OrchestratorMcpService.ts` (`requireWatchAccess`), `mcp/toolkits/orchestrator/tools.ts`.
+- Clients: `packages/client-runtime/src/scheduledTaskWatch.ts`, web `ScheduledTaskWatchFields.tsx`
+  and `ScheduledTasksSettings.tsx`, mobile `ScheduledTaskWatchFields.tsx`, `ScheduledTaskFormRows.tsx`
+  and the scheduled tasks screen; i18n in both apps.
+- Must survive: `scheduled_task_watch_state` is created at runtime by `ensureWatchStateTable`, not a
+  numbered migration, so upstream migrations can't collide with it. Keep that call in the
+  `ScheduledTaskService` layer. If upstream adds its own watch type, keep the fork's until they are
+  reconciled by hand.
+
 ## Fork-only files (always keep the fork's version)
 
 - `.github/workflows/fork-*.yml`, `.github/fork/**`, `scripts/disable-upstream-workflows.sh`

@@ -68,6 +68,9 @@ describe("resolveT3McpSummaryAction", () => {
     expect(resolveT3McpSummaryAction("schedule_task", { scheduledTaskId: "task-1" })).toBe(
       "schedule-update",
     );
+    expect(resolveT3McpSummaryAction("schedule_task", { schedule: { type: "watch" } })).toBe(
+      "schedule-watch",
+    );
     expect(resolveT3McpSummaryAction("delegate_task", { task: "x" })).toBe("delegate");
   });
 });

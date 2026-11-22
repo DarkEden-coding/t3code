@@ -30,6 +30,8 @@ jobs:
       - uses: ./.github/actions/setup-ci-deps
       - run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
       - run: vp run --filter @t3tools/desktop ensure:electron
+      # Browser tests beside changed web files run in headless Chromium.
+      - run: node apps/web/node_modules/playwright/cli.js install --with-deps --only-shell chromium
       # Format, lint, knip, typecheck of affected packages and dependents, and tests
       # beside the changes (scripts/check-changed.ts). This covers the PR's diff.
       - run: node scripts/check-changed.ts origin/main

@@ -39,6 +39,12 @@ import {
 import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
 import { scheduledTaskWorktreeBaseRef } from "@t3tools/client-runtime/scheduled-task-worktree";
 import {
+  DEFAULT_WATCH_PROMPTS,
+  formatWatchFailure,
+  watchDraft,
+} from "@t3tools/client-runtime/scheduled-task-watch";
+import { ScheduledTaskWatchFields } from "./ScheduledTaskWatchFields";
+import {
   MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
   MAX_WEBHOOK_FILTERS,
   MIN_SCHEDULED_TASK_INTERVAL_MS,
@@ -213,13 +219,18 @@ const EMPTY_DRAFT: DraftState = {
   coalesceWindowSeconds: "",
   filters: [],
   savedFilters: [],
+  watch: watchDraft(undefined),
 };
 
 function WebhookFiltersField({
   filters,
+  hint,
+  pathPlaceholder,
   onChange,
 }: {
   filters: ReadonlyArray<WebhookFilterDraft>;
+  hint: ReactNode;
+  pathPlaceholder: string;
   onChange: (filters: ReadonlyArray<WebhookFilterDraft>) => void;
 }) {
   const gt = useGT();
@@ -233,12 +244,7 @@ function WebhookFiltersField({
           <Label>
             <T>Filters</T>
           </Label>
-          <p className="text-sm text-muted-foreground">
-            <T>
-              Run only when every filter matches. Other requests are logged as filtered. Separate
-              “is one of” values with commas; a value can't contain a comma.
-            </T>
-          </p>
+          <p className="text-sm text-muted-foreground">{hint}</p>
         </div>
         <Button
           className="shrink-0"
@@ -260,7 +266,7 @@ function WebhookFiltersField({
             <div className="grid min-w-0 flex-1 grid-cols-1">
               <Input
                 aria-label={gt("Filter {number} path", { number: index + 1 })}
-                placeholder="body.action"
+                placeholder={pathPlaceholder}
                 value={filter.path}
                 onChange={(event) => update(index, { path: event.target.value })}
               />
@@ -799,6 +805,8 @@ function ScheduledTaskRow({
   const [busy, setBusy] = useState(false);
   const [deliveriesOpen, setDeliveriesOpen] = useState(false);
   const isWebhook = task.schedule.type === "webhook";
+  const isWatch = task.schedule.type === "watch";
+  const watchFailure = formatWatchFailure(task.watch, messages);
   const toggle = useAtomCommand(serverEnvironment.setScheduledTaskEnabled, {
     label: "scheduled task enabled",
   });
@@ -857,6 +865,8 @@ function ScheduledTaskRow({
               gt("Paused")
             ) : isWebhook ? (
               gt("Listening")
+            ) : isWatch ? (
+              gt("Watching")
             ) : task.nextRunAt ? (
               <T>
                 Next run <ScheduledRelativeLabel value={task.nextRunAt} />
@@ -874,6 +884,7 @@ function ScheduledTaskRow({
             <ScheduledTaskThreadLink environmentId={environmentId} threadId={task.threadId} />
           ) : null}
           {task.lastRunError ? <span className="text-destructive">{task.lastRunError}</span> : null}
+          {watchFailure !== null ? <span className="text-destructive">{watchFailure}</span> : null}
         </div>
       }
       control={
@@ -907,7 +918,7 @@ function ScheduledTaskRow({
                   <InboxIcon />
                   <T>Deliveries</T>
                 </MenuItem>
-              ) : (
+              ) : isWatch ? null : (
                 <MenuItem onClick={() => void act("run")}>
                   <PlayIcon />
                   <T>Run now</T>
@@ -1487,6 +1498,9 @@ function ScheduledTaskEditorForm({
     task?.schedule.type === "once";
   const offersThreadModes =
     environment?.serverConfig?.environment.capabilities.scheduledTaskThreadModes === true;
+  const offersWatch =
+    environment?.serverConfig?.environment.capabilities.commandWatchers === true ||
+    task?.schedule.type === "watch";
   const connected =
     environment?.connection.phase === "connected" && environment.serverConfig !== null;
   const tasksQuery = useEnvironmentQuery(
@@ -1643,7 +1657,7 @@ function ScheduledTaskEditorForm({
       return;
     }
     if (
-      schedule.type === "interval" &&
+      (schedule.type === "interval" || schedule.type === "watch") &&
       (!Number.isSafeInteger(schedule.everyMs) || schedule.everyMs < MIN_SCHEDULED_TASK_INTERVAL_MS)
     ) {
       reportFailure(gt("Invalid interval"), gt("Enter an interval of at least one minute."));
@@ -1721,8 +1735,8 @@ function ScheduledTaskEditorForm({
         <DialogTitle>{draft.editingId ? gt("Edit task") : gt("New task")}</DialogTitle>
         <DialogDescription>
           <T>
-            Run a prompt automatically on an interval, at a fixed time, once at a set date, or when
-            a webhook is called.
+            Run a prompt automatically on an interval, at a fixed time, once at a set date, when a
+            webhook is called, or when a command's output changes.
           </T>
         </DialogDescription>
       </DialogHeader>
@@ -1992,7 +2006,8 @@ function ScheduledTaskEditorForm({
                     mode === "fixed" ||
                     mode === "once" ||
                     mode === "interval" ||
-                    mode === "webhook"
+                    mode === "webhook" ||
+                    mode === "watch"
                   )
                     setDraft((current) => {
                       const suggested =
@@ -2009,10 +2024,13 @@ function ScheduledTaskEditorForm({
                               runAt: toDateTimeLocalValue(suggested),
                               savedRunAt: suggested.toISOString(),
                             }),
-                        prompt:
-                          mode === "webhook" && !current.prompt.trim()
+                        prompt: current.prompt.trim()
+                          ? current.prompt
+                          : mode === "webhook"
                             ? DEFAULT_WEBHOOK_PROMPT
-                            : current.prompt,
+                            : mode === "watch"
+                              ? DEFAULT_WATCH_PROMPTS[current.watch.mode]
+                              : current.prompt,
                       };
                     });
                 }}
@@ -2034,6 +2052,11 @@ function ScheduledTaskEditorForm({
                 >
                   <T>On webhook</T>
                 </Toggle>
+                {offersWatch ? (
+                  <Toggle value="watch">
+                    <T>On change</T>
+                  </Toggle>
+                ) : null}
               </ToggleGroup>
             </div>
 
@@ -2088,6 +2111,13 @@ function ScheduledTaskEditorForm({
                 </Field>
                 <WebhookFiltersField
                   filters={draft.filters}
+                  hint={
+                    <T>
+                      Run only when every filter matches. Other requests are logged as filtered.
+                      Separate “is one of” values with commas; a value can't contain a comma.
+                    </T>
+                  }
+                  pathPlaceholder="body.action"
                   onChange={(filters) => setDraft((current) => ({ ...current, filters }))}
                 />
                 <Field
@@ -2232,6 +2262,28 @@ function ScheduledTaskEditorForm({
                     </Field>
                   </div>
                 ) : null}
+              </div>
+            ) : draft.scheduleMode === "watch" ? (
+              <div className="space-y-4">
+                <ScheduledTaskWatchFields
+                  watch={draft.watch}
+                  intervalMinutes={draft.intervalMinutes}
+                  onChange={(watch) => setDraft((current) => ({ ...current, watch }))}
+                  onIntervalChange={(intervalMinutes) =>
+                    setDraft((current) => ({ ...current, intervalMinutes }))
+                  }
+                />
+                <WebhookFiltersField
+                  filters={draft.filters}
+                  hint={
+                    <T>
+                      Run only for new items, or a new value, that every filter matches. Paths are
+                      inside each item; a single dot is the item itself.
+                    </T>
+                  }
+                  pathPlaceholder="user.name"
+                  onChange={(filters) => setDraft((current) => ({ ...current, filters }))}
+                />
               </div>
             ) : draft.scheduleMode === "once" ? (
               <div className="flex items-center gap-2">
