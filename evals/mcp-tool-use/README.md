@@ -347,6 +347,12 @@ Errored samples are left out.
 
 Limits: the shell is simulated, so a CLI's output is the simulator's reading of the world and of the error texts the cases copy from real sessions. Polling never really waits, so these runs measure what polling decides, not the wall-clock time it takes. The simulator also sees the whole world, and early runs leaked it into invented files, such as an AGENTS.md naming `cafe` or a Forgejo API on git.cafe. The git.cafe worlds now rule both out. Read failing and passing transcripts before you trust a new case.
 
+## Command watcher cases
+
+`cases/command-watchers.ndjson` checks that an agent asked to wake on new output from a script it was given sets up a `watch` schedule (items mode, an id path, a filter, and the token as an `env` `secretRef`), not a model on a timer. The control checks that a plain weekday review stays `fixed_time`. Mock results must echo what the agent set, filters included, and use the world's time zone: when the summary dropped the filter or showed 9am UTC, Sol deleted the watch or rebuilt the daily task as a watch.
+
+Passes on gpt-6.1-sol with a gpt-6.1-terra shell, 3 samples each: `watch-dms-from-one-person` 3/3 and `watch-control-daily-review` 3/3. The existing scheduling cases (`schedule-*`, `scheduled-run-lists-tasks`, `secret-webhook-how-to-send`) stayed at 3/3 each with the watch text. Claude models were not run. `watch` does not exist on main, so the guard cannot pass there.
+
 ## Where T3's text lives
 
 - `packages/provider-core/src/server/runtimeInstructions.ts`
