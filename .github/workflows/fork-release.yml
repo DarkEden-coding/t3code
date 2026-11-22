@@ -7,8 +7,7 @@
 name: Fork release
 
 on:
-  schedule:
-    - cron: "0 10 * * *" # one hour after fork-sync
+  # Started by fork-sync after each nightly sync (see its "Start the nightly release" step), or by hand.
   workflow_dispatch:
     inputs:
       force:
