@@ -29,15 +29,21 @@ export type WatchEnvEntry =
   | { readonly name: string; readonly reference: SecretReference }
   | { readonly name: string; readonly keep: true };
 
-export class WatchEnvError extends Schema.TaggedError<WatchEnvError>()("WatchEnvError", {
-  variable: Schema.String,
-  reason: Schema.Literals(["missing", "store"]),
-  cause: Schema.optional(Schema.Defect()),
-}) {
+export class WatchEnvMissingError extends Schema.TaggedError<WatchEnvMissingError>()(
+  "WatchEnvMissingError",
+  { variable: Schema.String },
+) {
   override get message(): string {
-    return this.reason === "missing"
-      ? `${this.variable} has no stored value. Give it a value.`
-      : `Could not store the value of ${this.variable}.`;
+    return `${this.variable} has no stored value. Give it a value.`;
+  }
+}
+
+export class WatchEnvStoreError extends Schema.TaggedError<WatchEnvStoreError>()(
+  "WatchEnvStoreError",
+  { cause: Schema.Defect() },
+) {
+  override get message(): string {
+    return "Could not store the command's environment variables.";
   }
 }
 
@@ -90,7 +96,10 @@ export class CommandWatcher extends Context.Service<
     readonly saveEnv: (
       taskId: ScheduledTaskId,
       entries: ReadonlyArray<WatchEnvEntry>,
-    ) => Effect.Effect<ReadonlyArray<ScheduledTaskWatchEnvVar>, WatchEnvError>;
+    ) => Effect.Effect<
+      ReadonlyArray<ScheduledTaskWatchEnvVar>,
+      WatchEnvMissingError | WatchEnvStoreError
+    >;
     readonly removeEnv: (taskId: ScheduledTaskId) => Effect.Effect<void>;
   }
 >()("t3/scheduledTasks/CommandWatcher") {}
@@ -192,15 +201,14 @@ const make = Effect.gen(function* () {
 
   const saveEnv: CommandWatcher["Service"]["saveEnv"] = Effect.fn("CommandWatcher.saveEnv")(
     function* (taskId, entries) {
-      const storeError = (cause: unknown) =>
-        new WatchEnvError({ variable: "the environment", reason: "store", cause });
+      const storeError = (cause: unknown) => new WatchEnvStoreError({ cause });
       const existing = yield* readEnv(taskId).pipe(Effect.mapError(storeError));
       const next: Record<string, StoredEnv[string]> = {};
       for (const entry of entries) {
         if ("keep" in entry) {
           const kept = existing[entry.name];
           if (kept === undefined) {
-            return yield* new WatchEnvError({ variable: entry.name, reason: "missing" });
+            return yield* new WatchEnvMissingError({ variable: entry.name });
           }
           next[entry.name] = kept;
         } else {

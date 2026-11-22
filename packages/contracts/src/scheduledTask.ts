@@ -297,7 +297,7 @@ export const ScheduledTaskUpsertWatchEnvVar = Schema.Union([
     name: WatchEnvName,
     reference: SecretReference.annotate({ description: "Read from a secret provider per poll." }),
   }),
-  Schema.Struct({ name: WatchEnvName, secret: Schema.optional(Schema.Boolean) }),
+  Schema.Struct({ name: WatchEnvName }),
 ]);
 export type ScheduledTaskUpsertWatchEnvVar = typeof ScheduledTaskUpsertWatchEnvVar.Type;
 
@@ -314,7 +314,7 @@ const ScheduledTaskUpsertWatchSchedule = Schema.Struct({
     ),
   ).annotate({
     description:
-      "Env vars for the command: {name,value}, {name,secretRef}, or {name} to keep. Omitted: keep stored.",
+      "Env vars for the command: {name,value}, {name,secretRef}, {name,reference}, or {name} to keep. Omitted: keep stored.",
   }),
 }).annotate({
   description:

@@ -88,3 +88,10 @@ export const saveWatchState = Effect.fn("ScheduledTaskService.saveWatchState")(f
       last_polled_at = excluded.last_polled_at
   `;
 });
+
+export const clearWatchState = Effect.fn("ScheduledTaskService.clearWatchState")(function* (
+  taskId: ScheduledTaskId,
+) {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`DELETE FROM scheduled_task_watch_state WHERE task_id = ${taskId}`;
+});

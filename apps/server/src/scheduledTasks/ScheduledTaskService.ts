@@ -87,7 +87,12 @@ import {
   watchFailurePrompt,
   watchRecoveryNotice,
 } from "./watchDetect.ts";
-import { ensureWatchStateTable, loadWatchState, saveWatchState } from "./watchState.ts";
+import {
+  clearWatchState,
+  ensureWatchStateTable,
+  loadWatchState,
+  saveWatchState,
+} from "./watchState.ts";
 
 export const WEBHOOK_ROUTE_PREFIX = "/api/hooks";
 const isScheduledTaskError = Schema.is(ScheduledTaskError);
@@ -111,6 +116,18 @@ const LEGACY_DELIVERY_OUTCOMES: ReadonlySet<string> = new Set([
   "rate_limited",
   "expired",
 ]);
+
+/** What started a run: the clock, a person, a webhook delivery or a watch poll's prompt. */
+type RunSource =
+  | { readonly _tag: "scheduled" }
+  | { readonly _tag: "manual" }
+  | {
+      readonly _tag: "webhook";
+      readonly deliveryId: string;
+      readonly prompt: string;
+      readonly dispatched: Ref.Ref<boolean>;
+    }
+  | { readonly _tag: "watch"; readonly prompt: string };
 
 interface WebhookOrigin {
   readonly relayHookBaseUrl: string | null;
@@ -1000,15 +1017,11 @@ export const layer = Layer.effect(
 
     const runTask = Effect.fn("ScheduledTaskService.runTask")(function* (
       task: ScheduledTask,
-      trigger: "scheduled" | "manual" | "webhook" | "watch",
-      webhook?: {
-        readonly deliveryId: string;
-        readonly prompt: string;
-        readonly dispatched: Ref.Ref<boolean>;
-      },
-      /** A watch poll's prompt: the change filled into the task's prompt, or a failure notice. */
-      watchPrompt?: string,
+      source: RunSource,
     ) {
+      const trigger = source._tag;
+      const webhook = source._tag === "webhook" ? source : undefined;
+      const watchPrompt = source._tag === "watch" ? source.prompt : undefined;
       // Read before reserving: nothing between the reservation and its release may fail.
       const startedAt = yield* localNow;
       const startedAtIso = iso(startedAt);
@@ -1349,7 +1362,7 @@ export const layer = Layer.effect(
 
     // Sends a watch prompt through the normal run path; true once the thread accepted it.
     const dispatchWatchPrompt = (task: ScheduledTask, prompt: string) =>
-      runTask(task, "watch", undefined, prompt).pipe(
+      runTask(task, { _tag: "watch", prompt }).pipe(
         Effect.map((run) => run.threadId !== null),
         Effect.catch((cause) =>
           Effect.logWarning("Command watcher dispatch failed", { taskId: task.id, cause }).pipe(
@@ -1515,7 +1528,7 @@ export const layer = Layer.effect(
                 )
               : task.schedule.type === "watch"
                 ? startWatchPoll(task, now)
-                : runTask(task, "scheduled"),
+                : runTask(task, { _tag: "scheduled" }),
           ).pipe(
             Effect.catch((cause) =>
               Effect.logWarning("Scheduled task run failed", { taskId: task.id, cause }),
@@ -1674,7 +1687,8 @@ export const layer = Layer.effect(
     const forgetWatch = Effect.fn("ScheduledTaskService.forgetWatch")(function* (
       id: ScheduledTaskId,
     ) {
-      yield* sql`DELETE FROM scheduled_task_watch_state WHERE task_id = ${id}`.pipe(
+      yield* clearWatchState(id).pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
         Effect.catch((cause) =>
           Effect.logWarning("Could not clear a command watcher's state", { taskId: id, cause }),
         ),
@@ -2024,7 +2038,7 @@ export const layer = Layer.effect(
           taskId: input.id,
         });
       }
-      return yield* runTask(task, "manual").pipe(
+      return yield* runTask(task, { _tag: "manual" }).pipe(
         Effect.mapError((cause) =>
           isScheduledTaskError(cause)
             ? cause
@@ -2344,7 +2358,7 @@ export const layer = Layer.effect(
           Metrics.increment(Metrics.webhookRunsTotal, { outcome }),
         ]);
       const dispatched = yield* Ref.make(false);
-      return yield* runTask(task, "webhook", { deliveryId, prompt, dispatched }).pipe(
+      return yield* runTask(task, { _tag: "webhook", deliveryId, prompt, dispatched }).pipe(
         Effect.flatMap(({ dispatchFailed }) =>
           dispatchFailed
             ? runOutcome("failed").pipe(
