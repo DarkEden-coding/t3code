@@ -24,6 +24,7 @@ import {
   type ScheduledTaskSetEnabledInput,
   type ScheduledTaskThreadMode,
   type ScheduledTaskUpsertInput,
+  type ScheduledTaskWatchSchedule,
   managedPolicyDeniedMessage,
   scheduledTaskThreadMode,
   managedRuntimeModeDenial,
@@ -78,6 +79,15 @@ import {
 } from "./webhookDedupe.ts";
 import { describeFailedWebhookFilter, findFailedWebhookFilter } from "./webhookFilter.ts";
 import { constantTimeEquals, verifyWebhookSignature } from "./webhookVerification.ts";
+import * as CommandWatcher from "./CommandWatcher.ts";
+import {
+  detectWatchChange,
+  recordWatchFailure,
+  renderWatchPrompt,
+  watchFailurePrompt,
+  watchRecoveryNotice,
+} from "./watchDetect.ts";
+import { ensureWatchStateTable, loadWatchState, saveWatchState } from "./watchState.ts";
 
 export const WEBHOOK_ROUTE_PREFIX = "/api/hooks";
 const isScheduledTaskError = Schema.is(ScheduledTaskError);
@@ -234,6 +244,10 @@ interface ScheduledTaskRow {
   readonly run_count: number;
   readonly webhook_token: string | null;
   readonly webhook_secret: string | null;
+  /** Read only by the list and lookup queries; due-task polls leave them out. */
+  readonly watch_last_polled_at?: string | null;
+  readonly watch_last_error?: string | null;
+  readonly watch_consecutive_failures?: number | null;
 }
 
 interface WebhookDeliveryRow {
@@ -399,6 +413,14 @@ const decodeRow = Effect.fnUntraced(
   function* (row: ScheduledTaskRow, origin: WebhookOrigin | null = null) {
     const schedule = yield* decodeScheduleJson(row.schedule_json);
     const webhook = schedule.type === "webhook" ? webhookEndpoint(row, origin) : undefined;
+    const watch =
+      schedule.type === "watch"
+        ? {
+            lastPolledAt: row.watch_last_polled_at ?? null,
+            lastError: row.watch_last_error ?? null,
+            consecutiveFailures: row.watch_consecutive_failures ?? 0,
+          }
+        : undefined;
     const workspaceStrategy = yield* decodeWorkspaceStrategyJson(row.workspace_strategy_json);
     const modelSelection = yield* decodeModelSelectionJson(row.model_selection_json);
     return yield* decodeTask({
@@ -424,6 +446,7 @@ const decodeRow = Effect.fnUntraced(
       lastRunError: row.last_run_error,
       runCount: row.run_count,
       ...(webhook === undefined ? {} : { webhook }),
+      ...(watch === undefined ? {} : { watch }),
     });
   },
   (effect, row, _origin?) =>
@@ -486,6 +509,8 @@ export const layer = Layer.effect(
     const scheduler = yield* Scheduler.Scheduler;
     const readWebhookOrigin = yield* ScheduledTaskWebhookOrigin;
     const managedPolicy = yield* ManagedPolicy.ManagedPolicy;
+    const commandWatcher = yield* CommandWatcher.CommandWatcher;
+    yield* ensureWatchStateTable;
     const webhookPolicyOrganization = ManagedPolicy.deniedBy(managedPolicy, "webhookTasks");
     // Existing webhook tasks stay stored but report why they do not run.
     const webhookPolicyBlock =
@@ -548,8 +573,12 @@ export const layer = Layer.effect(
         last_run_error,
         run_count,
         webhook_token,
-        webhook_secret
+        webhook_secret,
+        watch.last_polled_at AS watch_last_polled_at,
+        watch.last_error AS watch_last_error,
+        watch.consecutive_failures AS watch_consecutive_failures
       FROM scheduled_tasks
+      LEFT JOIN scheduled_task_watch_state AS watch USING (task_id)
       -- Not updated_at: toggles, runs and edits rewrite it, and clients render
       -- this order as-is, so rows would move under the pointer.
       ORDER BY created_at DESC, task_id ASC
@@ -590,8 +619,12 @@ export const layer = Layer.effect(
         last_run_error,
         run_count,
         webhook_token,
-        webhook_secret
+        webhook_secret,
+        watch.last_polled_at AS watch_last_polled_at,
+        watch.last_error AS watch_last_error,
+        watch.consecutive_failures AS watch_consecutive_failures
       FROM scheduled_tasks
+      LEFT JOIN scheduled_task_watch_state AS watch USING (task_id)
       WHERE task_id = ${id}
     `.pipe(NodeSqliteClient.readOnly);
 
@@ -757,7 +790,12 @@ export const layer = Layer.effect(
       sql
         .withTransaction(
           sql`DELETE FROM scheduled_task_webhook_deliveries WHERE task_id = ${id}`.pipe(
-            Effect.andThen(sql`DELETE FROM scheduled_tasks WHERE task_id = ${id}`),
+            Effect.andThen(
+              sql<{ schedule_type: string | null }>`
+                DELETE FROM scheduled_tasks WHERE task_id = ${id}
+                RETURNING json_extract(schedule_json, '$.type') AS schedule_type
+              `,
+            ),
           ),
         )
         .pipe(
@@ -962,12 +1000,14 @@ export const layer = Layer.effect(
 
     const runTask = Effect.fn("ScheduledTaskService.runTask")(function* (
       task: ScheduledTask,
-      trigger: "scheduled" | "manual" | "webhook",
+      trigger: "scheduled" | "manual" | "webhook" | "watch",
       webhook?: {
         readonly deliveryId: string;
         readonly prompt: string;
         readonly dispatched: Ref.Ref<boolean>;
       },
+      /** A watch poll's prompt: the change filled into the task's prompt, or a failure notice. */
+      watchPrompt?: string,
     ) {
       // Read before reserving: nothing between the reservation and its release may fail.
       const startedAt = yield* localNow;
@@ -1042,6 +1082,15 @@ export const layer = Layer.effect(
                     : null;
           if (reason !== null) return yield* new WebhookDeliverySkipped({ reason });
         }
+        // A poll that outlived a pause, edit to another trigger or recreation must not run.
+        if (
+          trigger === "watch" &&
+          (!active.enabled ||
+            active.schedule.type !== "watch" ||
+            active.createdAt !== task.createdAt)
+        ) {
+          return { task: active, threadId: null, dispatchFailed: false };
+        }
 
         if (webhook === undefined) yield* markRunning(active.id, startedAtIso);
         else
@@ -1067,7 +1116,7 @@ export const layer = Layer.effect(
             : `${active.id}:webhook:${webhook.deliveryId}`;
         const commandId = CommandId.make(`scheduled-task:${fireKey}`);
         const messageId = MessageId.make(`scheduled-task-message:${fireKey}`);
-        const prompt = webhook?.prompt ?? active.prompt;
+        const prompt = webhook?.prompt ?? watchPrompt ?? active.prompt;
         const threadMode = scheduledTaskThreadMode(active);
 
         // A bound thread can move to another project (No project to a project) while
@@ -1298,6 +1347,131 @@ export const layer = Layer.effect(
       if (updated.length > 0) yield* notifyChanged;
     });
 
+    // Sends a watch prompt through the normal run path; true once the thread accepted it.
+    const dispatchWatchPrompt = (task: ScheduledTask, prompt: string) =>
+      runTask(task, "watch", undefined, prompt).pipe(
+        Effect.map((run) => run.threadId !== null),
+        Effect.catch((cause) =>
+          Effect.logWarning("Command watcher dispatch failed", { taskId: task.id, cause }).pipe(
+            Effect.as(false),
+          ),
+        ),
+      );
+
+    /**
+     * Runs the command, compares its output with the stored state and dispatches what changed.
+     * Seen items are stored only once their run is dispatched, so a failed send retries next poll.
+     */
+    const pollWatch = Effect.fn("ScheduledTaskService.pollWatch")(function* (
+      task: ScheduledTask,
+      schedule: ScheduledTaskWatchSchedule,
+    ) {
+      // A busy thread would collect one copy per change; the next poll still sees what changed.
+      if (task.threadId !== null) {
+        const occurrence = yield* queuedOccurrence(task.id, ThreadId.make(task.threadId)).pipe(
+          Effect.orElseSucceed(() => null),
+        );
+        if (occurrence !== null) return;
+      }
+      const previous = yield* loadWatchState(task.id);
+      const result = yield* commandWatcher.run({
+        id: task.id,
+        projectId: task.projectId,
+        schedule,
+      });
+      const polledAt = iso(yield* localNow);
+      const frameId = Buffer.from(yield* random.randomBytes(6)).toString("hex");
+      const detection =
+        result._tag === "Failed"
+          ? ({ _tag: "Invalid", error: result.error } as const)
+          : detectWatchChange(schedule, result.stdout, previous, polledAt);
+
+      if (detection._tag === "Invalid") {
+        const failed = recordWatchFailure(previous, detection.error, polledAt);
+        // Only a bound thread can be woken; an unbound task records the failure.
+        const woke =
+          failed.wake && task.threadId !== null
+            ? yield* dispatchWatchPrompt(
+                task,
+                watchFailurePrompt(task.title, detection.error, frameId),
+              )
+            : false;
+        yield* saveWatchState(
+          task.id,
+          woke ? { ...failed.state, failureNotified: true } : failed.state,
+        );
+        yield* notifyChanged;
+        return;
+      }
+
+      const recovery =
+        previous.failureNotified && task.threadId !== null
+          ? watchRecoveryNotice(task.title, previous.consecutiveFailures)
+          : null;
+      const change =
+        detection._tag === "Changed"
+          ? renderWatchPrompt(task.prompt, detection.change, frameId)
+          : null;
+      const prompt = [recovery, change].filter((part) => part !== null).join("\n\n");
+      const dispatched = prompt === "" || (yield* dispatchWatchPrompt(task, prompt));
+      yield* saveWatchState(
+        task.id,
+        dispatched
+          ? detection.state
+          : { ...previous, consecutiveFailures: 0, lastError: null, lastPolledAt: polledAt },
+      );
+      // Quiet polls change only the poll time, which does not warrant a list push per minute.
+      if (previous.configKey === null || previous.lastError !== null) yield* notifyChanged;
+    });
+
+    const activeWatchPolls = yield* Ref.make<ReadonlySet<ScheduledTaskId>>(new Set());
+    // Bounds how many watch commands run at once.
+    const watchPollPermits = yield* Semaphore.make(4);
+
+    /**
+     * Claims a due poll by moving next_run_at, then polls in the background: a command can run for
+     * minutes and must not hold up the other due tasks.
+     */
+    const startWatchPoll = Effect.fn("ScheduledTaskService.startWatchPoll")(function* (
+      task: ScheduledTask,
+      now: DateTime.DateTime,
+    ) {
+      const schedule = task.schedule;
+      if (schedule.type !== "watch") return;
+      const claimed = yield* sql`
+        UPDATE scheduled_tasks SET next_run_at = ${nextRunAt(task, now)}
+        WHERE task_id = ${task.id} AND next_run_at IS ${task.nextRunAt} AND enabled = 1
+        RETURNING task_id
+      `.pipe(
+        Effect.mapError((cause) =>
+          taskError("Could not claim a command watcher poll.", { taskId: task.id, cause }),
+        ),
+      );
+      if (claimed.length === 0) return;
+      yield* dueTasks.invalidate;
+      const reserved = yield* Ref.modify(activeWatchPolls, (active) =>
+        active.has(task.id)
+          ? ([false, active] as const)
+          : ([true, new Set(active).add(task.id)] as const),
+      );
+      if (!reserved) return;
+      yield* pollWatch(task, schedule).pipe(
+        watchPollPermits.withPermits(1),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Command watcher poll failed", { taskId: task.id, cause }),
+        ),
+        Effect.ensuring(
+          Ref.update(activeWatchPolls, (active) => {
+            const next = new Set(active);
+            next.delete(task.id);
+            return next;
+          }),
+        ),
+        Effect.withSpan("ScheduledTaskService.watchPoll", { root: true }),
+        Effect.forkIn(serviceScope),
+      );
+    });
+
     const runDueTasks = Effect.fn("ScheduledTaskService.runDueTasks")(function* () {
       const now = yield* localNow;
       const nowMs = DateTime.toEpochMillis(now);
@@ -1339,7 +1513,9 @@ export const layer = Layer.effect(
                   "missed",
                   "Missed a scheduled run because the server was not running at that time.",
                 )
-              : runTask(task, "scheduled"),
+              : task.schedule.type === "watch"
+                ? startWatchPoll(task, now)
+                : runTask(task, "scheduled"),
           ).pipe(
             Effect.catch((cause) =>
               Effect.logWarning("Scheduled task run failed", { taskId: task.id, cause }),
@@ -1449,6 +1625,59 @@ export const layer = Layer.effect(
       },
     );
 
+    /**
+     * Moves a watch task's variable values into the secret store and returns the names and kinds
+     * the schedule keeps. Omitted env keeps what is stored; a spent `secretRef` on a replayed save
+     * keeps the value that save stored.
+     */
+    const saveWatchEnv = Effect.fn("ScheduledTaskService.saveWatchEnv")(function* (
+      id: ScheduledTaskId,
+      input: ScheduledTaskUpsertInput,
+      schedule: Extract<ScheduledTaskUpsertInput["schedule"], { readonly type: "watch" }>,
+      existingTask: ScheduledTask | null,
+    ) {
+      const storedEnv =
+        existingTask?.schedule.type === "watch" ? existingTask.schedule.env : undefined;
+      if (schedule.env === undefined) return storedEnv ?? [];
+      const storedNames = new Set((storedEnv ?? []).map((variable) => variable.name));
+      const replay = input.commandId !== undefined;
+      const entries = yield* Effect.forEach(
+        schedule.env,
+        (variable): Effect.Effect<CommandWatcher.WatchEnvEntry, ScheduledTaskError> =>
+          "value" in variable
+            ? Effect.succeed({ name: variable.name, value: variable.value, secret: false })
+            : "reference" in variable
+              ? Effect.succeed({ name: variable.name, reference: variable.reference })
+              : "secretRef" in variable
+                ? secretRequests
+                    .consume({ ref: variable.secretRef, projectId: input.projectId })
+                    .pipe(
+                      Effect.map((value) => ({ name: variable.name, value, secret: true })),
+                      Effect.catch((error) =>
+                        replay && storedNames.has(variable.name)
+                          ? Effect.succeed({ name: variable.name, keep: true as const })
+                          : Effect.fail(taskError(error.message, { taskId: id })),
+                      ),
+                    )
+                : Effect.succeed({ name: variable.name, keep: true as const }),
+      );
+      return yield* commandWatcher
+        .saveEnv(id, entries)
+        .pipe(Effect.mapError((error) => taskError(error.message, { taskId: id, cause: error })));
+    });
+
+    /** Drops a former watch task's poll state and stored variables. */
+    const forgetWatch = Effect.fn("ScheduledTaskService.forgetWatch")(function* (
+      id: ScheduledTaskId,
+    ) {
+      yield* sql`DELETE FROM scheduled_task_watch_state WHERE task_id = ${id}`.pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("Could not clear a command watcher's state", { taskId: id, cause }),
+        ),
+      );
+      yield* commandWatcher.removeEnv(id);
+    });
+
     const upsert: ScheduledTaskService["Service"]["upsert"] = Effect.fn(
       "ScheduledTaskService.upsert",
     )(function* (input) {
@@ -1501,6 +1730,10 @@ export const layer = Layer.effect(
           ? managedRuntimeModeDenial(managedPolicy.summary, input.runtimeMode)
           : undefined;
       if (modeDenial !== undefined) return yield* taskError(modeDenial, { taskId: id });
+      const watchEnv =
+        input.schedule.type === "watch"
+          ? yield* saveWatchEnv(id, input, input.schedule, existingTask)
+          : undefined;
       // Keep the existing next_run_at when the schedule itself is untouched:
       // editing a title or prompt must not postpone (or resurrect) a due
       // run — only schedule/enabled changes restart the clock.
@@ -1534,7 +1767,9 @@ export const layer = Layer.effect(
             }
           : input.schedule.type === "once"
             ? { type: "once", runAt: iso(DateTime.makeUnsafe(input.schedule.runAt)) }
-            : input.schedule;
+            : input.schedule.type === "watch"
+              ? { ...input.schedule, env: watchEnv ?? [] }
+              : input.schedule;
       const webhook =
         input.schedule.type === "webhook"
           ? yield* Effect.gen(function* () {
@@ -1601,9 +1836,12 @@ export const layer = Layer.effect(
         creationSource: input.creationSource ?? "web",
         createdAt: existingTask?.createdAt ?? iso(now),
         updatedAt: iso(now),
+        // A new watch polls right away, so its baseline predates the first change it reports.
         nextRunAt: scheduleUnchanged
           ? existingTask.nextRunAt
-          : nextRunAt({ enabled: input.enabled, schedule }, now),
+          : schedule.type === "watch" && input.enabled
+            ? iso(now)
+            : nextRunAt({ enabled: input.enabled, schedule }, now),
         lastRunAt: existingTask?.lastRunAt ?? null,
         lastRunStatus: existingTask?.lastRunStatus ?? "never",
         lastRunError: existingTask?.lastRunError ?? null,
@@ -1616,6 +1854,9 @@ export const layer = Layer.effect(
         threadId === null && input.unbindThread === true ? (existingTask?.threadId ?? null) : null,
         webhook,
       );
+      if (existingTask?.schedule.type === "watch" && schedule.type !== "watch") {
+        yield* forgetWatch(id);
+      }
       yield* notifyChanged;
       return { task: (yield* findTask(id)) ?? task };
     });
@@ -1703,6 +1944,11 @@ export const layer = Layer.effect(
 
     const deleteTask: ScheduledTaskService["Service"]["delete"] = (input) =>
       deleteRow(input.id).pipe(
+        Effect.tap((removed) =>
+          removed.some((row) => row.schedule_type === "watch")
+            ? commandWatcher.removeEnv(input.id)
+            : Effect.void,
+        ),
         Effect.andThen(forgetWebhookTask(input.id)),
         Effect.andThen(notifyChanged),
         Effect.as({ id: input.id }),
@@ -1720,8 +1966,9 @@ export const layer = Layer.effect(
             DELETE FROM scheduled_task_webhook_deliveries
             WHERE task_id IN (SELECT task_id FROM scheduled_tasks WHERE thread_id = ${threadId})
           `;
-            return yield* sql<{ task_id: ScheduledTaskId }>`
-            DELETE FROM scheduled_tasks WHERE thread_id = ${threadId} RETURNING task_id
+            return yield* sql<{ task_id: ScheduledTaskId; schedule_type: string | null }>`
+            DELETE FROM scheduled_tasks WHERE thread_id = ${threadId}
+            RETURNING task_id, json_extract(schedule_json, '$.type') AS schedule_type
           `;
           }),
         )
@@ -1730,9 +1977,16 @@ export const layer = Layer.effect(
             taskError("Could not delete thread's schedule tasks.", { cause }),
           ),
         );
-      yield* Effect.forEach(removed, ({ task_id }) => forgetWebhookTask(task_id), {
-        discard: true,
-      });
+      yield* Effect.forEach(
+        removed,
+        ({ task_id, schedule_type }) =>
+          forgetWebhookTask(task_id).pipe(
+            Effect.andThen(
+              schedule_type === "watch" ? commandWatcher.removeEnv(task_id) : Effect.void,
+            ),
+          ),
+        { discard: true },
+      );
       if (removed.length > 0) yield* notifyChanged;
     });
 
@@ -1758,6 +2012,11 @@ export const layer = Layer.effect(
       const task = yield* loadTask(input.id);
       if (task.schedule.type === "webhook") {
         return yield* taskError("Webhook tasks run when their URL receives a request.", {
+          taskId: input.id,
+        });
+      }
+      if (task.schedule.type === "watch") {
+        return yield* taskError("Watch tasks run when their command's output changes.", {
           taskId: input.id,
         });
       }

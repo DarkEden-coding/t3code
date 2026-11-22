@@ -11,6 +11,7 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ModelSelection } from "./modelSelection.ts";
+import { SecretReference } from "./secretReference.ts";
 import {
   OrchestrationV2Actor,
   OrchestrationV2CreationSource,
@@ -117,32 +118,57 @@ const ScheduledTaskWebhookDedupe = Schema.Struct({
 });
 
 export const MAX_WEBHOOK_FILTERS = 16;
+/** Regex filters run on server input, so both the pattern and the text it tests are capped. */
+export const MAX_FILTER_PATTERN_LENGTH = 200;
+export const MAX_FILTER_MATCH_INPUT_LENGTH = 10_000;
 
-const WebhookFilterPath = TrimmedNonEmptyString.check(
-  Schema.isPattern(/^(body|headers|query)(\.|$)/),
-);
+/** Filter patterns compile with the `u` flag, the same way the server tests them. */
+function isValidFilterPattern(pattern: string): boolean {
+  try {
+    return new RegExp(pattern, "u") instanceof RegExp;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Forms edit an `in` list as comma-separated text, so a value that has no
  * comma and no surrounding whitespace survives that round trip unchanged.
  */
-const WebhookFilterListValue = Schema.String.check(
-  Schema.isPattern(/^[^,\s](?:[^,]*[^,\s])?$/),
-).annotate({ description: "Non-empty, without commas or surrounding whitespace." });
+const FilterListValue = Schema.String.check(Schema.isPattern(/^[^,\s](?:[^,]*[^,\s])?$/)).annotate({
+  description: "Non-empty, without commas or surrounding whitespace.",
+});
 
-export const ScheduledTaskWebhookFilter = Schema.Union([
-  Schema.Struct({
-    path: WebhookFilterPath,
-    op: Schema.Literals(["equals", "notEquals", "startsWith"]),
-    value: Schema.String,
-  }),
-  Schema.Struct({
-    path: WebhookFilterPath,
-    op: Schema.Literal("in"),
-    value: Schema.Array(WebhookFilterListValue).check(Schema.isMinLength(1)),
-  }),
-  Schema.Struct({ path: WebhookFilterPath, op: Schema.Literal("exists") }),
-]).annotate({
+const FilterPattern = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(MAX_FILTER_PATTERN_LENGTH),
+  Schema.makeFilter(
+    (value) => isValidFilterPattern(value) || "Expected a valid regular expression.",
+  ),
+).annotate({ description: "JavaScript regex, max 200 chars." });
+
+/** Webhook and watch filters share their operators; only what a path may name differs. */
+const makeFilter = <Path extends Schema.Codec<string, string>>(path: Path) =>
+  Schema.Union([
+    Schema.Struct({
+      path,
+      op: Schema.Literals(["equals", "notEquals", "startsWith"]),
+      value: Schema.String,
+    }),
+    Schema.Struct({ path, op: Schema.Literal("matches"), value: FilterPattern }),
+    Schema.Struct({
+      path,
+      op: Schema.Literal("in"),
+      value: Schema.Array(FilterListValue).check(Schema.isMinLength(1)),
+    }),
+    Schema.Struct({ path, op: Schema.Literal("exists") }),
+  ]);
+
+const WebhookFilterPath = TrimmedNonEmptyString.check(
+  Schema.isPattern(/^(body|headers|query)(\.|$)/),
+);
+
+export const ScheduledTaskWebhookFilter = makeFilter(WebhookFilterPath).annotate({
   description:
     "Path: `headers.x-event` or `body.action`. String compare. Objects pass only 'exists'. A `[]` segment matches any array item. `notEquals` passes only if no item equals.",
 });
@@ -190,12 +216,114 @@ const ScheduledTaskUpsertWebhookSchedule = Schema.Struct({
     "Run per webhook request. Prompt can use {{body.path}}, {{headers.name}}, {{query.name}}, {{body}}, {{request}}.",
 });
 
+export const DEFAULT_WATCH_TIMEOUT_MS = 60_000;
+export const MAX_WATCH_TIMEOUT_MS = 300_000;
+const MAX_WATCH_ENV_VARS = 32;
+const MAX_WATCH_COMMAND_LENGTH = 8_000;
+
+const WatchPath = Schema.String.check(Schema.isMaxLength(500)).annotate({
+  description: "Dot path such as `data.messages`; `[]` maps arrays. Empty: the whole output.",
+});
+
+const WatchFilterPath = TrimmedNonEmptyString.check(Schema.isMaxLength(500));
+
+/** Paths are relative to each new item, or to the selected value; `.` is the item or value itself. */
+export const ScheduledTaskWatchFilter = makeFilter(WatchFilterPath).annotate({
+  description:
+    "Path inside each item (value mode: the value); `.` is the item itself. All must match.",
+});
+export type ScheduledTaskWatchFilter = typeof ScheduledTaskWatchFilter.Type;
+
+const ScheduledTaskWatchFilters = Schema.Array(ScheduledTaskWatchFilter).check(
+  Schema.isMaxLength(MAX_WEBHOOK_FILTERS),
+);
+
+const WatchEnvName = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(128),
+  Schema.isPattern(/^[A-Za-z_][A-Za-z0-9_]*$/),
+);
+
+const uniqueEnvNames = Schema.makeFilter(
+  (env: ReadonlyArray<{ readonly name: string }>) =>
+    new Set(env.map((variable) => variable.name)).size === env.length ||
+    "Each variable name can appear once.",
+);
+
+/** What a client sees of a variable: its name and whether its value is a secret, never the value. */
+export const ScheduledTaskWatchEnvVar = Schema.Struct({
+  name: WatchEnvName,
+  secret: Schema.Boolean,
+});
+export type ScheduledTaskWatchEnvVar = typeof ScheduledTaskWatchEnvVar.Type;
+
+const ScheduledTaskWatchFields = {
+  everyMs: ScheduledTaskIntervalMs,
+  command: TrimmedNonEmptyString.check(Schema.isMaxLength(MAX_WATCH_COMMAND_LENGTH)).annotate({
+    description: "Shell command run in the project root. Credentials go in `env`, not here.",
+  }),
+  timeoutMs: Schema.optional(
+    Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: MAX_WATCH_TIMEOUT_MS })),
+  ).annotate({ description: "Default 60000, max 300000." }),
+  mode: Schema.Literals(["items", "value"]).annotate({
+    description:
+      "items: stdout is JSON; `path` selects an array and runs fire for unseen ids. value: fire when the value at `path` changes.",
+  }),
+  path: Schema.optional(WatchPath),
+  idPath: Schema.optional(WatchPath).annotate({
+    description: "Items mode: id inside each item. Default `id`; `.` is the item itself.",
+  }),
+  filters: Schema.optional(ScheduledTaskWatchFilters),
+};
+
+const ScheduledTaskWatchSchedule = Schema.Struct({
+  type: Schema.Literal("watch"),
+  ...ScheduledTaskWatchFields,
+  env: Schema.optional(Schema.Array(ScheduledTaskWatchEnvVar)),
+}).annotate({ description: "Poll a command and run when its output changes." });
+export type ScheduledTaskWatchSchedule = typeof ScheduledTaskWatchSchedule.Type;
+
+/** A variable's value on save. Name only keeps the stored value. */
+export const ScheduledTaskUpsertWatchEnvVar = Schema.Union([
+  Schema.Struct({ name: WatchEnvName, value: Schema.String.check(Schema.isMaxLength(32_768)) }),
+  Schema.Struct({
+    name: WatchEnvName,
+    secretRef: SecretRef.annotate({ description: "From `request_secret`. Spent by this save." }),
+  }),
+  Schema.Struct({
+    name: WatchEnvName,
+    reference: SecretReference.annotate({ description: "Read from a secret provider per poll." }),
+  }),
+  Schema.Struct({ name: WatchEnvName, secret: Schema.optional(Schema.Boolean) }),
+]);
+export type ScheduledTaskUpsertWatchEnvVar = typeof ScheduledTaskUpsertWatchEnvVar.Type;
+
+const ScheduledTaskUpsertWatchSchedule = Schema.Struct({
+  type: Schema.Literal("watch"),
+  ...ScheduledTaskWatchFields,
+  everyMs: ScheduledTaskIntervalMs.check(
+    Schema.isGreaterThanOrEqualTo(MIN_SCHEDULED_TASK_INTERVAL_MS),
+  ).annotate({ description: "Poll interval. Min 60000." }),
+  env: Schema.optional(
+    Schema.Array(ScheduledTaskUpsertWatchEnvVar).check(
+      Schema.isMaxLength(MAX_WATCH_ENV_VARS),
+      uniqueEnvNames,
+    ),
+  ).annotate({
+    description:
+      "Env vars for the command: {name,value}, {name,secretRef}, or {name} to keep. Omitted: keep stored.",
+  }),
+}).annotate({
+  description:
+    "Poll a command without a model; run the prompt on a change. First poll is a baseline. Prompt can use {{items}}, {{items.length}}, {{value}}, {{previous}}.",
+});
+
 /** Accept legacy sub-minute schedules so users can still manage them. */
 export const ScheduledTaskSchedule = Schema.Union([
   ScheduledTaskIntervalSchedule,
   ScheduledTaskFixedTimeSchedule,
   ScheduledTaskOnceSchedule,
   ScheduledTaskWebhookSchedule,
+  ScheduledTaskWatchSchedule,
 ]);
 export type ScheduledTaskSchedule = typeof ScheduledTaskSchedule.Type;
 
@@ -211,6 +339,7 @@ export const ScheduledTaskUpsertSchedule = Schema.Union([
   ScheduledTaskFixedTimeSchedule,
   ScheduledTaskOnceSchedule,
   ScheduledTaskUpsertWebhookSchedule,
+  ScheduledTaskUpsertWatchSchedule,
 ]);
 export type ScheduledTaskUpsertSchedule = typeof ScheduledTaskUpsertSchedule.Type;
 
@@ -223,6 +352,14 @@ export const ScheduledTaskWebhookEndpoint = Schema.Struct({
   hasSecret: Schema.Boolean,
 });
 export type ScheduledTaskWebhookEndpoint = typeof ScheduledTaskWebhookEndpoint.Type;
+
+/** A watch task's poll state. Failures never start runs until the third in a row. */
+export const ScheduledTaskWatchStatus = Schema.Struct({
+  lastPolledAt: Schema.NullOr(IsoDateTime),
+  lastError: Schema.NullOr(Schema.String),
+  consecutiveFailures: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export type ScheduledTaskWatchStatus = typeof ScheduledTaskWatchStatus.Type;
 
 /**
  * Where runs go. One-thread modes launch their thread on the first run and keep it; `fresh_session`
@@ -261,6 +398,7 @@ export const ScheduledTask = Schema.Struct({
   lastRunError: Schema.NullOr(Schema.String),
   runCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   webhook: Schema.optional(ScheduledTaskWebhookEndpoint),
+  watch: Schema.optional(ScheduledTaskWatchStatus),
   /** Why the task cannot run regardless of `enabled`, such as a managed policy refusing webhooks. */
   blockedByPolicy: Schema.optionalKey(Schema.String),
 });

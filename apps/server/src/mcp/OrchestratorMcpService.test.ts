@@ -4035,6 +4035,39 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
     );
 
+    it.effect("lets only a full-access caller set a watch schedule", () =>
+      Effect.gen(function* () {
+        const upserted = yield* Ref.make(0);
+        const schedule = {
+          type: "watch",
+          everyMs: 60_000,
+          command: "./dms.sh",
+          mode: "items",
+        } as const;
+        const watch = task({ schedule, webhook: undefined, runtimeMode: "full-access" });
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+          Effect.provide(service([watch], null, upserted)),
+        );
+        const save = (scope: McpInvocationScope) =>
+          mcp.scheduleTask(scope, { projectId, prompt: "New DMs: {{items}}", schedule });
+        const denied = [
+          save(supervisedClient),
+          mcp.updateScheduledTask(supervisedClient, { scheduledTaskId: watch.id, schedule }),
+        ];
+        for (const call of denied) {
+          assert.equal((yield* Effect.flip(call)).code, "runtime_mode_escalation_denied");
+        }
+        assert.equal(yield* Ref.get(upserted), 0);
+        const fullAccess: McpInvocationScope = {
+          ...supervisedClient,
+          client: { sessionId: "scheduled", label: "Claude Code", access: "full-access" },
+        };
+        const created = yield* save(fullAccess);
+        assert.deepEqual(created.schedule, schedule);
+        assert.equal(yield* Ref.get(upserted), 1);
+      }),
+    );
+
     it.effect("checks a bound task against its thread's current modes", () =>
       Effect.gen(function* () {
         const upserted = yield* Ref.make(0);

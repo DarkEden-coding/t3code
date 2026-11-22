@@ -22,8 +22,8 @@ export function nextScheduledRunAt(
       ? runAt.value
       : null;
   }
-  if (schedule.type === "interval") {
-    // Intervals advance elapsed time, including across daylight-saving changes.
+  if (schedule.type === "interval" || schedule.type === "watch") {
+    // Intervals and watch polls advance elapsed time, including across daylight-saving changes.
     return DateTime.addDuration(from, Math.max(schedule.everyMs, MIN_SCHEDULED_TASK_INTERVAL_MS));
   }
 
@@ -56,6 +56,8 @@ export function isSameSchedule(a: ScheduledTaskSchedule, b: ScheduledTaskSchedul
     return b.type === "interval" && a.everyMs === b.everyMs;
   }
   if (a.type === "webhook") return b.type === "webhook";
+  // Command and detection edits reset the baseline, not the poll clock.
+  if (a.type === "watch") return b.type === "watch" && a.everyMs === b.everyMs;
   if (a.type === "once") return b.type === "once" && Date.parse(a.runAt) === Date.parse(b.runAt);
   if (b.type !== "fixed_time") return false;
   // Compare parsed times so padded-hour edits do not reschedule pending runs.

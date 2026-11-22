@@ -304,6 +304,7 @@ function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): Orchestrato
       ? {}
       : { webhookSignature: task.webhook.hasSecret ? "set" : "none" }),
     ...(task.blockedByPolicy === undefined ? {} : { blockedByPolicy: task.blockedByPolicy }),
+    ...(task.watch === undefined ? {} : { watch: task.watch }),
   };
 }
 
@@ -2311,6 +2312,23 @@ const make = Effect.gen(function* () {
     interactionModeRank(modes.interactionMode) <= interactionModeRank(limits.interactionMode);
 
   /**
+   * A watch runs its shell command on this machine with no model in the loop, so only a caller
+   * that already runs at full access may set one. Pausing or editing the prompt changes no command.
+   */
+  const requireWatchAccess = (
+    limits: { readonly runtimeMode: RuntimeMode },
+    schedule: ScheduledTaskUpsertInput["schedule"] | undefined,
+  ) =>
+    schedule?.type === "watch" && limits.runtimeMode !== "full-access"
+      ? Effect.fail(
+          failure(
+            "runtime_mode_escalation_denied",
+            "Watch tasks run a shell command without a model, so only a full-access thread can set one.",
+          ),
+        )
+      : Effect.void;
+
+  /**
    * Creation returns a webhook URL only to callers allowed to start its runs: never a read-only
    * client, and a thread caller only with a live turn at modes covering every mode the task runs at.
    */
@@ -2373,6 +2391,7 @@ const make = Effect.gen(function* () {
   return OrchestratorMcpService.of({
     scheduleTask: Effect.fn("OrchestratorMcpService.scheduleTask")(function* (scope, input) {
       const { parent, limits } = yield* loadCaller(scope, ["runs"]);
+      yield* requireWatchAccess(limits, input.schedule);
       const projectId = yield* resolveProjectTarget(parent, input.projectId);
       yield* assertLiveCallerForOtherProject(scope, parent, projectId);
       const project = yield* requireProject(projectId);
@@ -2458,6 +2477,7 @@ const make = Effect.gen(function* () {
     updateScheduledTask: Effect.fn("OrchestratorMcpService.updateScheduledTask")(
       function* (scope, input) {
         const { parent, limits } = yield* loadCaller(scope, ["runs"]);
+        yield* requireWatchAccess(limits, input.schedule);
         const existing = yield* loadScheduledTask(input.scheduledTaskId, limits);
         yield* assertLiveCallerForOtherProject(scope, parent, existing.projectId);
         if (

@@ -1,6 +1,13 @@
-import type { ScheduledTaskWebhookFilter } from "@t3tools/contracts";
+import {
+  MAX_FILTER_MATCH_INPUT_LENGTH,
+  type ScheduledTaskWatchFilter,
+  type ScheduledTaskWebhookFilter,
+} from "@t3tools/contracts";
 
 import { webhookExpressionResolver, type WebhookRequest } from "./webhookTemplate.ts";
+
+/** Webhook and watch filters share their operators; only their paths differ. */
+type ScheduledTaskFilter = ScheduledTaskWebhookFilter | ScheduledTaskWatchFilter;
 
 export interface FailedWebhookFilter {
   readonly index: number;
@@ -13,7 +20,7 @@ function scalarText(value: unknown): string | undefined {
   return undefined;
 }
 
-function matchesScalar(filter: ScheduledTaskWebhookFilter, text: string): boolean {
+function matchesScalar(filter: ScheduledTaskFilter, text: string): boolean {
   switch (filter.op) {
     case "equals":
       return text === filter.value;
@@ -23,6 +30,9 @@ function matchesScalar(filter: ScheduledTaskWebhookFilter, text: string): boolea
       return filter.value.includes(text);
     case "startsWith":
       return text.startsWith(filter.value);
+    case "matches":
+      // Bounds a backtracking pattern's input; the pattern length is capped at save.
+      return new RegExp(filter.value, "u").test(text.slice(0, MAX_FILTER_MATCH_INPUT_LENGTH));
     case "exists":
       return true;
   }
@@ -34,7 +44,7 @@ function matchesScalar(filter: ScheduledTaskWebhookFilter, text: string): boolea
  * `startsWith` match when any element does, `notEquals` only when none equals
  * the value, and `exists` when the list has an element.
  */
-function matchesWebhookFilter(filter: ScheduledTaskWebhookFilter, value: unknown): boolean {
+function matchesFilter(filter: ScheduledTaskFilter, value: unknown): boolean {
   if (Array.isArray(value) && /\[\]/.test(filter.path)) {
     if (filter.op === "exists")
       return value.some((element) => element !== null && element !== undefined);
@@ -48,17 +58,24 @@ function matchesWebhookFilter(filter: ScheduledTaskWebhookFilter, value: unknown
   return matchesScalar(filter, text);
 }
 
+/** The first filter the resolved values fail, or null when every filter matches. */
+export function findFailedFilter(
+  filters: ReadonlyArray<ScheduledTaskFilter>,
+  resolve: (path: string) => unknown,
+): FailedWebhookFilter | null {
+  for (const [index, filter] of filters.entries()) {
+    if (!matchesFilter(filter, resolve(filter.path))) return { index, path: filter.path };
+  }
+  return null;
+}
+
 /** The first filter the request fails, or null when every filter matches. */
 export function findFailedWebhookFilter(
   filters: ReadonlyArray<ScheduledTaskWebhookFilter>,
   request: WebhookRequest,
 ): FailedWebhookFilter | null {
   if (filters.length === 0) return null;
-  const resolve = webhookExpressionResolver(request);
-  for (const [index, filter] of filters.entries()) {
-    if (!matchesWebhookFilter(filter, resolve(filter.path))) return { index, path: filter.path };
-  }
-  return null;
+  return findFailedFilter(filters, webhookExpressionResolver(request));
 }
 
 /** Filters are numbered from 1, in the order the settings form lists them. */
