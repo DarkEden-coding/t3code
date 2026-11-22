@@ -11,7 +11,7 @@ which upstream files it touches, and what must survive a merge. Keep it short.
 
 ## macOS signing without notarization or passkeys (patch 0002)
 - `.github/workflows/release-desktop.yml`: the mac branch signs with `CSC_LINK` + `CSC_KEY_PASSWORD` alone,
-  and notarizes without a provisioning profile.
+  and notarizes without a provisioning profile. Its CLI-archive signing step also accepts an `Apple Development` identity.
 - `scripts/build-desktop-artifact.ts`: passkey entitlements only with `T3CODE_MACOS_PROVISIONING_PROFILE`;
   otherwise the hardened-runtime entitlements (`MAC_HARDENED_RUNTIME_ENTITLEMENTS`) are still applied.
 - Must survive: a signed mac build with no provisioning profile still succeeds and keeps the camera and mic entitlements.
