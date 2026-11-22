@@ -7,9 +7,8 @@
 name: Fork release
 
 on:
-  # Off until the first fork release has been verified on a real machine.
-  # schedule:
-  #   - cron: "0 10 * * *" # one hour after fork-sync
+  schedule:
+    - cron: "0 10 * * *" # one hour after fork-sync
   workflow_dispatch:
     inputs:
       force:

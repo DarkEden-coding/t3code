@@ -4,9 +4,8 @@
 name: Fork sync
 
 on:
-  # Off until the first fork release has been verified on a real machine.
-  # schedule:
-  #   - cron: "0 9 * * *" # 09:00 UTC = 01:00 PST / 02:00 PDT, before fork-release at 10:00 UTC
+  schedule:
+    - cron: "0 9 * * *" # 09:00 UTC = 01:00 PST / 02:00 PDT, before fork-release at 10:00 UTC
   workflow_dispatch:
 
 permissions:
