@@ -6,6 +6,7 @@ import {
   type ScheduledTaskUpsertWatchEnvVar,
   ScheduledTaskWatchFilter,
   type ScheduledTaskWatchSchedule,
+  type ScheduledTaskWatchStatus,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { mFallback, msg } from "gt-i18n";
@@ -90,9 +91,11 @@ export function watchScheduleFromDraft(
     ({ number, op }) =>
       op === "exists"
         ? resolve(msg("Filter {number} needs a path.", { number }))
-        : op === "matches"
-          ? resolve(msg("Filter {number} needs a path and a valid regex.", { number }))
-          : resolve(msg("Filter {number} needs a path and a value.", { number })),
+        : op === "in"
+          ? resolve(msg("Filter {number} needs a path and at least one value.", { number }))
+          : op === "matches"
+            ? resolve(msg("Filter {number} needs a path and a valid regex.", { number }))
+            : resolve(msg("Filter {number} needs a path and a value.", { number })),
     resolve,
   );
   if ("error" in parsed) return parsed;
@@ -130,4 +133,18 @@ export function watchScheduleFromDraft(
       env,
     },
   };
+}
+
+/** A watch task's failure line, or null while its polls succeed. */
+export function formatWatchFailure(
+  watch: ScheduledTaskWatchStatus | undefined,
+  resolve: MFunctionType = mFallback,
+): string | null {
+  if (watch?.lastError == null) return null;
+  return resolve(
+    msg("{count, plural, one {Last poll failed} other {# polls failed in a row}}: {error}", {
+      count: watch.consecutiveFailures,
+      error: watch.lastError,
+    }),
+  );
 }

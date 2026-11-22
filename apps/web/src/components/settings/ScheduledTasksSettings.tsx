@@ -38,7 +38,11 @@ import {
 } from "@t3tools/client-runtime/scheduled-task-webhook";
 import { scheduleTimeZoneLabel } from "@t3tools/client-runtime/scheduled-task-time-zone";
 import { scheduledTaskWorktreeBaseRef } from "@t3tools/client-runtime/scheduled-task-worktree";
-import { DEFAULT_WATCH_PROMPTS, watchDraft } from "@t3tools/client-runtime/scheduled-task-watch";
+import {
+  DEFAULT_WATCH_PROMPTS,
+  formatWatchFailure,
+  watchDraft,
+} from "@t3tools/client-runtime/scheduled-task-watch";
 import { ScheduledTaskWatchFields } from "./ScheduledTaskWatchFields";
 import {
   MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
@@ -802,6 +806,7 @@ function ScheduledTaskRow({
   const [deliveriesOpen, setDeliveriesOpen] = useState(false);
   const isWebhook = task.schedule.type === "webhook";
   const isWatch = task.schedule.type === "watch";
+  const watchFailure = formatWatchFailure(task.watch, messages);
   const toggle = useAtomCommand(serverEnvironment.setScheduledTaskEnabled, {
     label: "scheduled task enabled",
   });
@@ -879,17 +884,7 @@ function ScheduledTaskRow({
             <ScheduledTaskThreadLink environmentId={environmentId} threadId={task.threadId} />
           ) : null}
           {task.lastRunError ? <span className="text-destructive">{task.lastRunError}</span> : null}
-          {task.watch?.lastError ? (
-            <span className="text-destructive">
-              {gt(
-                "{count, plural, one {Last poll failed} other {# polls failed in a row}}: {error}",
-                {
-                  count: task.watch.consecutiveFailures,
-                  error: task.watch.lastError,
-                },
-              )}
-            </span>
-          ) : null}
+          {watchFailure !== null ? <span className="text-destructive">{watchFailure}</span> : null}
         </div>
       }
       control={

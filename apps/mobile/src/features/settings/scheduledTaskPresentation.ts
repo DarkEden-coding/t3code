@@ -1,4 +1,3 @@
-import type { ScheduledTaskWatchStatus } from "@t3tools/contracts";
 import { msg } from "gt-react-native";
 
 import { m, type MessageResolver } from "../../i18n/messages";
@@ -102,18 +101,4 @@ export function formatNextScheduledTaskRun(
     ...(next.getFullYear() !== current.getFullYear() ? { year: "numeric" as const } : {}),
   });
   return resolve(msg("Next run {date} at {time}", { date, time }));
-}
-
-/** A watch task's failure line, or null while its polls succeed. */
-export function formatScheduledTaskWatchFailure(
-  watch: ScheduledTaskWatchStatus | undefined,
-  resolve: MessageResolver = m,
-): string | null {
-  if (watch?.lastError == null) return null;
-  return resolve(
-    msg("{count, plural, one {Last poll failed} other {# polls failed in a row}}: {error}", {
-      count: watch.consecutiveFailures,
-      error: watch.lastError,
-    }),
-  );
 }

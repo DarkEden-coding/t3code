@@ -101,9 +101,11 @@ import {
 import {
   formatNextScheduledTaskRun,
   formatScheduledTaskInterval,
-  formatScheduledTaskWatchFailure,
 } from "./scheduledTaskPresentation";
-import { DEFAULT_WATCH_PROMPTS } from "@t3tools/client-runtime/scheduled-task-watch";
+import {
+  DEFAULT_WATCH_PROMPTS,
+  formatWatchFailure,
+} from "@t3tools/client-runtime/scheduled-task-watch";
 
 type ScheduledTaskRoutes = {
   SettingsScheduledTaskNew: undefined;
@@ -1688,7 +1690,7 @@ function EnvironmentTasks({
               ) : null}
               {task.watch?.lastError ? (
                 <Text className="text-sm text-danger-foreground" numberOfLines={2}>
-                  {formatScheduledTaskWatchFailure(task.watch, m)}
+                  {formatWatchFailure(task.watch, m)}
                 </Text>
               ) : null}
             </Pressable>
