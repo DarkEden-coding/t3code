@@ -5,7 +5,7 @@ name: Fork sync
 
 on:
   schedule:
-    - cron: "0 9 * * *" # 09:00 UTC = 01:00 PST / 02:00 PDT, before fork-release at 10:00 UTC
+    - cron: "0 9 * * *" # 09:00 UTC = 01:00 PST / 02:00 PDT; starts fork-release when done
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          # A PAT or GitHub App token, so the push below triggers fork-release/fork-ci.
+          # A PAT or GitHub App token, so the push below triggers fork-ci.
           # Pushes made with GITHUB_TOKEN do not trigger other workflows.
           token: ${{ secrets.FORK_BOT_TOKEN }}
 
@@ -180,6 +180,17 @@ jobs:
           else
             gh issue create --label sync-blocked --title "Nightly upstream sync blocked" --body "$body"
           fi
+
+      # fork-release has no schedule of its own. Something outside this repo keeps setting it to
+      # disabled_manually, which would silently skip a scheduled run, so the sync enables and
+      # starts it. Its preflight skips the build when main hasn't changed since the last nightly.
+      - name: Start the nightly release
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.FORK_BOT_TOKEN }}
+        run: |
+          gh workflow enable --repo "${{ github.repository }}" fork-release.yml
+          gh workflow run --repo "${{ github.repository }}" fork-release.yml --ref main
 
       - name: Upload logs
         if: always()
