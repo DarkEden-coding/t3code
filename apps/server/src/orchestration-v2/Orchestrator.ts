@@ -13,7 +13,7 @@ import {
   runRanAfter,
   usageLimitBlockedRun,
 } from "@t3tools/shared/orchestrationV2ThreadError";
-import { threadIssueKeysEqual } from "@t3tools/contracts";
+import { applyThreadCompactionUpdate, threadIssueKeysEqual } from "@t3tools/contracts";
 import { canonicalizeGitCafePullRequestUrl } from "@t3tools/source-control-definitions/registry";
 import { threadPullRequestsOf } from "../sourceControl/threadPullRequests.ts";
 import {
@@ -5087,6 +5087,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           };
         }
         case "thread.metadata.update": {
+          const { type: _type, commandId: _commandId, threadId: _threadId, ...changes } = command;
+          // Compaction overrides are settings, not activity, so the thread keeps its list place.
+          const compactionOnly =
+            command.compaction !== undefined &&
+            Object.entries(changes).every(
+              ([key, value]) => key === "compaction" || value === undefined,
+            );
           const previousRecovery =
             thread.limitRecovery?.runId === command.limitRecovery?.runId &&
             thread.limitRecovery?.resetAt === command.limitRecovery?.resetAt
@@ -5108,6 +5115,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...thread,
             ...(command.title === undefined ? {} : { title: command.title, titleRenamed: true }),
             ...(command.limitRecovery === undefined ? {} : { limitRecovery }),
+            ...(command.compaction === undefined
+              ? {}
+              : { compaction: applyThreadCompactionUpdate(thread.compaction, command.compaction) }),
             ...(command.limitRecovery !== undefined &&
             limitRecovery?.snooze === true &&
             Date.parse(limitRecovery.resetAt) > DateTime.toEpochMillis(now)
@@ -5157,7 +5167,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               : command.regenerateTitle === false || command.title !== undefined
                 ? { titleRegeneration: null }
                 : {}),
-            updatedAt: now,
+            updatedAt: compactionOnly ? thread.updatedAt : now,
           };
         }
         case "thread.pull-request.link":

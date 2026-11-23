@@ -81,6 +81,12 @@ over 200,000 tokens. Each Claude provider's settings can override it:
 - **Never** skips idle compaction and Claude's resume prompt. **Auto-compact after**
   still applies, and you can still compact by hand.
 
+To change either setting for one thread, right-click it in the sidebar and open
+**Compaction**. **Use default** follows the provider setting, then the default
+above, and shows the value it currently resolves to. **Auto-compact after** can
+also be turned **Off** for the thread. A new auto-compact value applies from the
+thread's next turn.
+
 ## Usage limits
 
 If your Claude subscription runs out of usage mid-turn, the thread shows which

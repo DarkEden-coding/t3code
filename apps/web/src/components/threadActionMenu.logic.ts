@@ -1,8 +1,16 @@
-import type { ContextMenuItem } from "@t3tools/contracts";
+import {
+  IdleCompactionMode,
+  ThreadAutoCompactWindow,
+  type ContextMenuItem,
+  type ThreadCompaction,
+  type ThreadCompactionUpdate,
+} from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
+import * as Schema from "effect/Schema";
 import { msg } from "gt-react";
 
 import { m, type MessageResolver } from "../i18n/messages";
+import { formatContextWindowTokens } from "../lib/contextWindow";
 
 export type ThreadActionMenuId =
   | "find"
@@ -29,8 +37,125 @@ export type ThreadActionMenuId =
   | "copy-branch"
   | "copy-thread"
   | "copy-thread-id"
+  | "compaction"
+  | `compaction:${string}`
   | "archive"
   | "delete";
+
+export interface ThreadCompactionMenuState {
+  readonly overrides: ThreadCompaction | undefined;
+  /** What "Use default" resolves to: the instance's mode, else the environment's. */
+  readonly defaultIdleCompaction: IdleCompactionMode;
+  /** The instance's window, or "" for Claude's own default. */
+  readonly defaultAutoCompactWindow: string;
+}
+
+const IDLE_COMPACTION_LABELS: Record<IdleCompactionMode, string> = {
+  onReturn: msg("When you return"),
+  beforeCacheExpires: msg("Before the cache expires (beta)"),
+  off: msg("Never", { $context: "idle thread compaction mode" }),
+};
+
+const AUTO_COMPACT_WINDOW_PRESETS = [
+  100_000, 200_000, 300_000, 400_000, 500_000, 750_000, 1_000_000,
+] as const;
+
+const isIdleCompactionMode = Schema.is(IdleCompactionMode);
+const isAutoCompactWindow = Schema.is(ThreadAutoCompactWindow);
+
+/** The override a compaction menu action sets, or null for any other action. */
+export function threadCompactionUpdateForAction(
+  action: ThreadActionMenuId,
+): ThreadCompactionUpdate | null {
+  const [prefix, key, value] = action.split(":");
+  if (prefix !== "compaction" || value === undefined) return null;
+  if (key === "idle") {
+    if (value === "default") return { idleCompaction: null };
+    return isIdleCompactionMode(value) ? { idleCompaction: value } : null;
+  }
+  if (key === "window") {
+    if (value === "default") return { autoCompactWindow: null };
+    const window = value === "off" ? value : Number(value);
+    return isAutoCompactWindow(window) ? { autoCompactWindow: window } : null;
+  }
+  return null;
+}
+
+function buildCompactionMenuItem(
+  state: ThreadCompactionMenuState,
+  resolve: MessageResolver,
+): ContextMenuItem<ThreadActionMenuId> {
+  const idleOverride = state.overrides?.idleCompaction;
+  const windowOverride = state.overrides?.autoCompactWindow;
+  const windowLabel = (window: string | number) =>
+    window === "off"
+      ? resolve(msg("Off", { $context: "automatic context compaction is off" }))
+      : window === ""
+        ? resolve(msg("Claude's default"))
+        : resolve(msg("{used} tokens", { used: formatContextWindowTokens(Number(window)) }));
+  const windows: ReadonlyArray<number> =
+    typeof windowOverride === "number" &&
+    !AUTO_COMPACT_WINDOW_PRESETS.some((preset) => preset === windowOverride)
+      ? [...AUTO_COMPACT_WINDOW_PRESETS, windowOverride].toSorted((a, b) => a - b)
+      : AUTO_COMPACT_WINDOW_PRESETS;
+  const useDefault = resolve(msg("Use default"));
+  return {
+    id: "compaction",
+    label: resolve(msg("Compaction", { $context: "submenu of context compaction settings" })),
+    icon: "fold-vertical",
+    children: [
+      {
+        id: "compaction:idle",
+        label: resolve(msg("Compact when idle")),
+        detail: resolve(IDLE_COMPACTION_LABELS[idleOverride ?? state.defaultIdleCompaction]),
+        children: [
+          {
+            id: "compaction:idle:default",
+            label: useDefault,
+            detail: resolve(IDLE_COMPACTION_LABELS[state.defaultIdleCompaction]),
+            checked: idleOverride === undefined,
+          },
+          ...IdleCompactionMode.literals.map((mode) => ({
+            id: `compaction:idle:${mode}` as const,
+            label: resolve(IDLE_COMPACTION_LABELS[mode]),
+            checked: idleOverride === mode,
+            ...(mode === "onReturn" ? { separatorBefore: true } : {}),
+          })),
+        ],
+      },
+      {
+        id: "compaction:window",
+        label: resolve(msg("Auto-compact after")),
+        detail: windowLabel(windowOverride ?? state.defaultAutoCompactWindow),
+        children: [
+          {
+            id: "compaction:window:default",
+            label: useDefault,
+            detail: windowLabel(state.defaultAutoCompactWindow),
+            checked: windowOverride === undefined,
+          },
+          ...windows.map((window, index) => ({
+            id: `compaction:window:${window}` as const,
+            label: windowLabel(window),
+            checked: windowOverride === window,
+            ...(index === 0 ? { separatorBefore: true } : {}),
+          })),
+          {
+            id: "compaction:window:off",
+            label: windowLabel("off"),
+            checked: windowOverride === "off",
+          },
+          {
+            id: "compaction:window:note",
+            label: resolve(msg("Applies from the next turn")),
+            disabled: true,
+            separatorBefore: true,
+          },
+        ],
+      },
+    ],
+  };
+}
 
 export type DraftActionMenuId =
   | "copy"
@@ -123,6 +248,8 @@ export interface ThreadActionMenuState {
   readonly canShareWithGuest?: boolean;
   /** A No project thread with its own folder, on a server that can promote it. */
   readonly canTurnIntoProject?: boolean;
+  /** Null where the thread is not on Claude or the server keeps no overrides. */
+  readonly compaction?: ThreadCompactionMenuState | null;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -265,6 +392,7 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
+    ...(state.compaction ? [buildCompactionMenuItem(state.compaction, resolve)] : []),
     {
       id: "copy",
       label: resolve(msg("Copy", { $context: "submenu of things to copy" })),

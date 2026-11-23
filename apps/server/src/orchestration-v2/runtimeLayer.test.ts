@@ -3775,6 +3775,33 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           step,
         );
       }
+      for (const [step, compaction, expected] of [
+        ["set-idle", { idleCompaction: "off" }, { idleCompaction: "off" }],
+        [
+          "set-window",
+          { autoCompactWindow: 300_000 },
+          { idleCompaction: "off", autoCompactWindow: 300_000 },
+        ],
+        ["clear-idle", { idleCompaction: null }, { autoCompactWindow: 300_000 }],
+        ["clear-window", { autoCompactWindow: null }, undefined],
+      ] as const) {
+        yield* orchestrator.dispatch({
+          type: "thread.metadata.update",
+          commandId: CommandId.make(`runtime-layer-lifecycle-compaction-${step}`),
+          threadId,
+          compaction,
+        });
+        assert.deepEqual(
+          shellOf(yield* orchestrator.getShellSnapshot()).compaction,
+          expected,
+          step,
+        );
+        assert.deepEqual(
+          (yield* orchestrator.getThreadProjection(threadId)).thread.compaction,
+          expected,
+          step,
+        );
+      }
       const taggedShell = shellOf(yield* orchestrator.getShellSnapshot());
       // Tags are not activity, so the thread keeps its place in thread lists.
       assert.equal(

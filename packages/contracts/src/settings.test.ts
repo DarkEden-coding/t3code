@@ -18,6 +18,9 @@ import {
   PROJECT_SCOPED_SERVER_SETTING_KEYS,
   requiredScopesForProjectMutation,
   resolveIdleCompaction,
+  resolveAutoCompactWindowSetting,
+  instanceAutoCompactWindow,
+  applyThreadCompactionUpdate,
   resolveProjectProviderInstanceEnabled,
   resolveProviderInstanceEnabled,
   ServerSettings,
@@ -286,6 +289,54 @@ describe("resolveIdleCompaction", () => {
     );
     expect(resolveIdleCompaction(settings, ProviderInstanceId.make("claude_personal"))).toBe("off");
     expect(resolveIdleCompaction(settings, ProviderInstanceId.make("claudeAgent"))).toBe("off");
+    const thread = { compaction: { idleCompaction: "beforeCacheExpires" as const } };
+    expect(resolveIdleCompaction(settings, ProviderInstanceId.make("claude_work"), thread)).toBe(
+      "beforeCacheExpires",
+    );
+    expect(resolveIdleCompaction(settings, ProviderInstanceId.make("claude_work"), {})).toBe(
+      "onReturn",
+    );
+  });
+
+  it("lets a thread override the instance's auto-compact window, or turn it off", () => {
+    const settings = decodeServerSettings({
+      providerInstances: {
+        claude_work: { driver: "claudeAgent", config: { autoCompactWindow: "400000" } },
+      },
+    });
+    const instanceWindow = instanceAutoCompactWindow(
+      settings,
+      ProviderInstanceId.make("claude_work"),
+    );
+    expect(instanceWindow).toBe("400000");
+    expect(instanceAutoCompactWindow(settings, ProviderInstanceId.make("claudeAgent"))).toBe("");
+    expect(resolveAutoCompactWindowSetting(instanceWindow, null)).toBe("400000");
+    expect(
+      resolveAutoCompactWindowSetting(instanceWindow, {
+        compaction: { autoCompactWindow: 250_000 },
+      }),
+    ).toBe("250000");
+    expect(resolveAutoCompactWindowSetting("", { compaction: { autoCompactWindow: "off" } })).toBe(
+      "off",
+    );
+  });
+
+  it("patches thread overrides, with null restoring the default", () => {
+    expect(applyThreadCompactionUpdate(undefined, { idleCompaction: "off" })).toEqual({
+      idleCompaction: "off",
+    });
+    expect(
+      applyThreadCompactionUpdate({ idleCompaction: "off" }, { autoCompactWindow: 300_000 }),
+    ).toEqual({ idleCompaction: "off", autoCompactWindow: 300_000 });
+    expect(
+      applyThreadCompactionUpdate(
+        { idleCompaction: "off", autoCompactWindow: 300_000 },
+        { idleCompaction: null },
+      ),
+    ).toEqual({ autoCompactWindow: 300_000 });
+    expect(
+      applyThreadCompactionUpdate({ autoCompactWindow: "off" }, { autoCompactWindow: null }),
+    ).toBeUndefined();
   });
 
   it("reads the mode from the legacy switch, in either form servers saved it", () => {

@@ -2020,6 +2020,9 @@ export function threadShellFromProjection(
     titleRegeneration: projection.thread.titleRegeneration ?? null,
     lastTitleRegeneration: projection.thread.lastTitleRegeneration ?? null,
     limitRecovery: projection.thread.limitRecovery ?? null,
+    ...(projection.thread.compaction === undefined
+      ? {}
+      : { compaction: projection.thread.compaction }),
     deletedAt: projection.thread.deletedAt,
   };
 }
@@ -2318,6 +2321,9 @@ function shellFromState(input: {
     titleRegeneration: input.state.thread.titleRegeneration ?? null,
     lastTitleRegeneration: input.state.thread.lastTitleRegeneration ?? null,
     limitRecovery: input.state.thread.limitRecovery ?? null,
+    ...(input.state.thread.compaction === undefined
+      ? {}
+      : { compaction: input.state.thread.compaction }),
     deletedAt: input.state.thread.deletedAt,
   };
 }

@@ -53,6 +53,8 @@ import {
   ProviderTurnId,
   RunAttemptId,
   RunId,
+  type ThreadAutoCompactWindow,
+  type ThreadCompaction,
   ThreadId,
 } from "@t3tools/contracts";
 import { mcpAppFromToolItem } from "@t3tools/shared/toolOutput";
@@ -503,19 +505,30 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     });
   });
 
-  it("sends the auto-compact window as the env var Claude Code prefers", () => {
-    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
-      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-      nativeThreadId: "native-auto-compact",
-      resume: false,
-      cwd: "/workspace",
-      settings: { ...DEFAULT_CLAUDE_SETTINGS, autoCompactWindow: "400000" },
-    });
-    assert.equal(
-      (options.settings as { env?: Record<string, string> }).env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW,
-      "400000",
-    );
-  });
+  it.each([
+    { compaction: undefined, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "400000" } },
+    {
+      compaction: { autoCompactWindow: 250_000 },
+      env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "250000" },
+    },
+    { compaction: { autoCompactWindow: "off" }, env: { DISABLE_AUTO_COMPACT: "1" } },
+  ] satisfies ReadonlyArray<{
+    compaction: ThreadCompaction | undefined;
+    env: Record<string, string>;
+  }>)(
+    "sends the auto-compact window as the env var Claude Code prefers ($env)",
+    ({ compaction, env }) => {
+      const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+        modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+        nativeThreadId: "native-auto-compact",
+        resume: false,
+        cwd: "/workspace",
+        settings: { ...DEFAULT_CLAUDE_SETTINGS, autoCompactWindow: "400000" },
+        compaction,
+      });
+      assert.deepEqual((options.settings as { env?: Record<string, string> }).env, env);
+    },
+  );
 
   it("sends a custom model named like a Claude Code alias to the API unchanged", () => {
     const options = ClaudeAdapterV2.makeClaudeQueryOptions({
@@ -777,6 +790,11 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     assert.equal(keyFor(), initialKey);
     assert.notEqual(keyFor("/repos/api"), initialKey);
     assert.notEqual(keyFor("/repos/api"), keyFor("/repos/api-moved"));
+    // Claude reads a thread's auto-compact window at spawn.
+    const windowKey = (window: ThreadAutoCompactWindow) =>
+      ClaudeAdapterV2.claudeEffectiveQueryPolicyKey(queryPolicy, overrides, undefined, window);
+    assert.notEqual(windowKey(300_000), initialKey);
+    assert.notEqual(windowKey(300_000), windowKey("off"));
     assert.equal(keyFor("/repos/api"), keyFor("/repos/api"));
   });
 
@@ -10821,7 +10839,29 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       environment: { DISABLE_AUTO_COMPACT: "1" },
       threshold: undefined,
     },
-  ])(
+    {
+      autoCompactWindow: "400000",
+      model: "claude-opus-5-5",
+      userSettings: '{"autoCompactWindow":500000}',
+      compaction: { autoCompactWindow: 300_000 },
+      threshold: 267_000,
+    },
+    {
+      autoCompactWindow: "400000",
+      model: "claude-opus-5-5",
+      compaction: { autoCompactWindow: "off" },
+      threshold: undefined,
+    },
+  ] satisfies ReadonlyArray<{
+    autoCompactWindow: string;
+    model: string;
+    threshold: number | undefined;
+    userSettings?: string;
+    projectSettings?: string;
+    launchArgs?: string;
+    environment?: Record<string, string>;
+    compaction?: ThreadCompaction;
+  }>)(
     "ignores stale snapshots after compaction and reports threshold $autoCompactWindow for $model",
     ({
       autoCompactWindow,
@@ -10831,6 +10871,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       projectSettings,
       launchArgs,
       environment,
+      compaction,
     }) =>
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -10856,21 +10897,23 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           },
           ...(environment === undefined ? {} : { environment }),
         });
-        yield* harness.runtime.startTurn(
-          makeClaudeTestTurnInput({
-            threadId: harness.threadId,
-            providerThread: harness.providerThread,
-            now: yield* DateTime.now,
-            attemptId: RunAttemptId.make("attempt-snapshot-usage-compaction"),
-            text: "Continue.",
-            attachments: [],
-            modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model },
-            runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-              ...CLAUDE_TEST_RUNTIME_POLICY,
-              cwd: project,
-            }),
+        const turnInput = makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("attempt-snapshot-usage-compaction"),
+          text: "Continue.",
+          attachments: [],
+          modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model },
+          runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+            ...CLAUDE_TEST_RUNTIME_POLICY,
+            cwd: project,
           }),
-        );
+        });
+        yield* harness.runtime.startTurn({
+          ...turnInput,
+          appThread: { ...turnInput.appThread, compaction },
+        });
         const usage = { ...zeroUsage, input_tokens: 1_000, output_tokens: 75 };
         const frames = [
           usageSnapshotFrame("msg_fallback", "00000000-0000-4000-8000-000000000790", usage),

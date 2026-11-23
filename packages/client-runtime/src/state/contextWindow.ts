@@ -313,7 +313,7 @@ export function compactBeforeSendTokens(input: {
     provider === undefined ||
     !input.threadIdle ||
     COMPACT_COMMAND_PATTERN.test(input.text) ||
-    resolveIdleCompaction(input.settings, provider.instanceId) === "off" ||
+    resolveIdleCompaction(input.settings, provider.instanceId, projection.thread) === "off" ||
     !provider.slashCommands.some((command) => command.name === "compact") ||
     resolvePendingHandoff(projection, input.selection, input.providers) !== null ||
     projection.runtimeRequests.some((request) => request.status === "pending") ||

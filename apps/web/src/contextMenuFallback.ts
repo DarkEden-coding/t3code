@@ -26,6 +26,16 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "path", attrs: { d: "M12 6v6l4 2" } },
     { tag: "circle", attrs: { cx: "12", cy: "12", r: "10" } },
   ],
+  "fold-vertical": [
+    { tag: "path", attrs: { d: "M12 22v-6" } },
+    { tag: "path", attrs: { d: "M12 8V2" } },
+    { tag: "path", attrs: { d: "M4 12H2" } },
+    { tag: "path", attrs: { d: "M10 12H8" } },
+    { tag: "path", attrs: { d: "M16 12h-2" } },
+    { tag: "path", attrs: { d: "M22 12h-2" } },
+    { tag: "path", attrs: { d: "m15 19-3-3-3 3" } },
+    { tag: "path", attrs: { d: "m15 5-3 3-3-3" } },
+  ],
   pencil: [
     {
       tag: "path",
