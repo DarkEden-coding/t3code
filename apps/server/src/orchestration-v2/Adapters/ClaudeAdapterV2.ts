@@ -134,8 +134,11 @@ import {
   type ProviderThreadId,
   type RunId,
   type ThreadId,
+  resolveAutoCompactWindowSetting,
   resolveIdleCompaction,
   isDelegatedAppThread,
+  type ThreadAutoCompactWindow,
+  type ThreadCompaction,
 } from "@t3tools/contracts";
 
 import { FILE_HEADERS_ONLY, formatPatch, structuredPatch } from "diff";
@@ -2313,6 +2316,8 @@ export function makeClaudeQueryOptions(input: {
   readonly workspace?: ProviderAdapter.ProviderAdapterV2RuntimePolicy["workspace"];
   readonly attachmentsDir?: string;
   readonly settings?: ClaudeSettings;
+  /** The thread's overrides, which take precedence over `settings`. */
+  readonly compaction?: ThreadCompaction | undefined;
   readonly promptSuggestions?: boolean;
   readonly sdkSettings?: string | ClaudeSdkSettings;
   readonly environment?: NodeJS.ProcessEnv;
@@ -2380,10 +2385,15 @@ export function makeClaudeQueryOptions(input: {
       : typeof input.sdkSettings === "object" && input.sdkSettings !== null
         ? ({ ...input.sdkSettings, ...selectionSettings } as ClaudeSdkSettings)
         : selectionSettings;
+  const configuredWindow = resolveAutoCompactWindowSetting(
+    input.settings?.autoCompactWindow ?? "",
+    {
+      compaction: input.compaction,
+    },
+  );
+  const autoCompactOff = configuredWindow === "off";
   const autoCompactWindow =
-    input.settings?.autoCompactWindow === undefined || input.settings.autoCompactWindow.length === 0
-      ? undefined
-      : input.settings.autoCompactWindow;
+    configuredWindow.length === 0 || autoCompactOff ? undefined : configuredWindow;
   const compactQuerySettings =
     autoCompactWindow === undefined
       ? querySettings
@@ -2404,7 +2414,8 @@ export function makeClaudeQueryOptions(input: {
   const effectiveQuerySettings =
     (input.toolSearchOverride === undefined &&
       aliasOverrideEnv === undefined &&
-      autoCompactWindow === undefined) ||
+      autoCompactWindow === undefined &&
+      !autoCompactOff) ||
     typeof compactQuerySettings === "string"
       ? compactQuerySettings
       : ({
@@ -2416,6 +2427,8 @@ export function makeClaudeQueryOptions(input: {
             ...(autoCompactWindow === undefined
               ? {}
               : { CLAUDE_CODE_AUTO_COMPACT_WINDOW: autoCompactWindow }),
+            // Leaves manual /compact working, unlike DISABLE_COMPACT.
+            ...(autoCompactOff ? { DISABLE_AUTO_COMPACT: "1" } : {}),
             ...(input.toolSearchOverride === undefined
               ? {}
               : { ENABLE_TOOL_SEARCH: input.toolSearchOverride }),
@@ -3712,9 +3725,12 @@ export function claudeEffectiveQueryPolicyKey(
   },
   // Folders are fixed when a query starts, so a changed list needs a new one.
   workspace?: ProviderAdapter.ProviderAdapterV2RuntimePolicy["workspace"],
+  // Claude reads its auto-compact window at spawn, so a thread's new window needs a new query.
+  autoCompactWindow?: ThreadAutoCompactWindow,
 ): string {
   return JSON.stringify({
     workspace,
+    autoCompactWindow,
     runtimePolicy: claudeRuntimeQueryPolicyKey({
       ...queryPolicy,
       ...(mcpOverrides.allowedTools === undefined
@@ -5927,8 +5943,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
     cwd: string | null,
     modelSelection: ModelSelection,
     launchArgSettings: ClaudeSdkSettings | undefined,
+    compaction: ThreadCompaction | undefined,
   ) {
+    const configuredWindow = resolveAutoCompactWindowSetting(
+      adapterOptions.settings.autoCompactWindow,
+      { compaction },
+    );
     // With auto-compaction off Claude never compacts, so there is no threshold to report.
+    if (configuredWindow === "off") return "";
     for (const name of ["DISABLE_COMPACT", "DISABLE_AUTO_COMPACT"]) {
       const value = yield* resolveClaudeEnv(cwd, launchArgSettings, name);
       if (isClaudeEnvTruthy(value)) return "";
@@ -5946,8 +5968,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
       }
     }
     if (autoCompactEnabled === false) return "";
-    if (adapterOptions.settings.autoCompactWindow !== "")
-      return adapterOptions.settings.autoCompactWindow;
+    if (configuredWindow !== "") return configuredWindow;
     const validWindow = (value: unknown) => {
       const selected = Option.getOrUndefined(decodeClaudeCompactWindow(value));
       return typeof selected === "number" && selected >= 100_000 && selected <= 1_000_000
@@ -13002,14 +13023,19 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               if (request.dialogKind !== "resume_return") {
                 return { behavior: "cancelled" as const };
               }
+              const appThread = (yield* Ref.get(activeTurn))?.input.appThread;
               const idleCompaction = Option.isSome(serverSettings)
                 ? yield* serverSettings.value.getSettings.pipe(
                     Effect.map((settings) =>
-                      resolveIdleCompaction(settings, adapterOptions.instanceId),
+                      resolveIdleCompaction(settings, adapterOptions.instanceId, appThread),
                     ),
-                    Effect.orElseSucceed(() => adapterOptions.settings.idleCompaction),
+                    Effect.orElseSucceed(
+                      () =>
+                        appThread?.compaction?.idleCompaction ??
+                        adapterOptions.settings.idleCompaction,
+                    ),
                   )
-                : adapterOptions.settings.idleCompaction;
+                : (appThread?.compaction?.idleCompaction ?? adapterOptions.settings.idleCompaction);
               if (idleCompaction === "off") {
                 return { behavior: "completed" as const, result: "continue" as const };
               }
@@ -13169,6 +13195,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             queryPolicy,
             mcpOverrides,
             turnInput.runtimePolicy.workspace,
+            turnInput.appThread.compaction?.autoCompactWindow,
           );
           const resumeSessionAt = yield* getNativeConversationHeadId(turnInput.providerThread);
           const existing = yield* Ref.get(queryContext);
@@ -13308,6 +13335,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               : { workspace: turnInput.runtimePolicy.workspace }),
             attachmentsDir,
             settings: adapterOptions.settings,
+            compaction: turnInput.appThread.compaction,
             // Delegated threads have no one typing, so they never ask for suggestions.
             promptSuggestions:
               !isDelegatedAppThread(turnInput.appThread) && (yield* promptSuggestionsEnabled),
@@ -13679,6 +13707,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               querySession.settingsCwd,
               turnInput.modelSelection,
               querySession.launchArgSettings,
+              turnInput.appThread.compaction,
             );
             const context: ActiveClaudeTurnContext = {
               input: turnInput,

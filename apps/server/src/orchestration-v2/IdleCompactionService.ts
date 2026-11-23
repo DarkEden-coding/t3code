@@ -42,7 +42,8 @@ export const make = Effect.gen(function* () {
           : thread.providerInstanceId === "claudeAgent";
         if (
           !claudeInstance ||
-          resolveIdleCompaction(current, thread.providerInstanceId) !== "beforeCacheExpires" ||
+          resolveIdleCompaction(current, thread.providerInstanceId, thread) !==
+            "beforeCacheExpires" ||
           !resolveProjectProviderInstanceEnabled(
             current,
             thread.projectId,
@@ -79,7 +80,7 @@ export const make = Effect.gen(function* () {
           },
         );
         if (
-          resolveIdleCompaction(current, records.thread.providerInstanceId) !==
+          resolveIdleCompaction(current, records.thread.providerInstanceId, records.thread) !==
             "beforeCacheExpires" ||
           !resolveProjectProviderInstanceEnabled(
             current,

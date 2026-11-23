@@ -177,6 +177,7 @@ import { ProjectRowActions } from "./ProjectComboboxRow";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
+  threadCompactionUpdateForAction,
   threadActionRequiresOperate,
 } from "./threadActionMenu.logic";
 import {
@@ -240,6 +241,7 @@ import {
 } from "./sidebar/routeReveal";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { titleRegenerationToast } from "./threadTitleRegenerationToast";
+import { readThreadCompactionMenuState } from "./threadCompactionMenu";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { Button } from "./ui/button";
@@ -946,6 +948,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     unpinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadCompaction,
     turnThreadIntoProject,
     reorderPinnedThread,
     reorderActiveThread,
@@ -2716,6 +2719,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               ),
               canTurnIntoProject: canTurnThreadIntoProject(threadRef),
               canRename: !fromSearch,
+              compaction: readThreadCompactionMenuState(thread),
               supports: {
                 settlement: configLoaded,
                 autoSettleOptOut: supportsAutoSettleOptOut,
@@ -2742,6 +2746,22 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   thread.environmentId,
                 );
           if (preset) attemptSnooze(threadRef, preset);
+          return;
+        }
+        const compactionUpdate = threadCompactionUpdateForAction(clicked.value);
+        if (compactionUpdate) {
+          const result = await setThreadCompaction(threadRef, compactionUpdate);
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            toastManager.add(
+              stackedThreadToast({
+                type: "error",
+                title: gt("Failed to update compaction"),
+                description:
+                  thrownErrorMessage(squashAtomCommandFailure(result), m) ??
+                  gt("An error occurred."),
+              }),
+            );
+          }
           return;
         }
         switch (clicked.value) {

@@ -956,6 +956,13 @@ it.effect("a read-only client reads threads and is refused every write before it
     });
     expect(declaredFailure(configure)).toMatchObject({ code: "capability_denied" });
     expect(dispatched).toEqual([]);
+
+    const compaction = yield* call("t3_thread_configure", {
+      threadId: "other-project-thread",
+      compaction: { idleCompaction: "off" },
+    });
+    expect(declaredFailure(compaction)).toMatchObject({ code: "capability_denied" });
+    expect(dispatched).toEqual([]);
   }).pipe(
     Effect.provide(
       layerThreadToolkit.pipe(

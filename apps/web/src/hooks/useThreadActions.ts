@@ -14,6 +14,7 @@ import {
   EnvironmentAuthorizationError,
   EnvironmentId,
   type ScopedThreadRef,
+  type ThreadCompactionUpdate,
   ThreadId,
   sessionGrantsScope,
 } from "@t3tools/contracts";
@@ -323,6 +324,9 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const setThreadAutoSettleMutation = useOrchestrationCommand(threadEnvironment.setAutoSettle, {
+    reportFailure: false,
+  });
+  const updateThreadMetadataMutation = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
   const reorderPinnedThreadMutation = useOrchestrationCommand(threadEnvironment.reorderPin, {
@@ -776,6 +780,12 @@ export function useThreadActions() {
     });
   };
 
+  const setThreadCompaction = (target: ScopedThreadRef, compaction: ThreadCompactionUpdate) =>
+    updateThreadMetadataMutation({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, compaction },
+    });
+
   const sendPin = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
     if (!readEnvironmentServerConfigLoaded(target.environmentId)) {
       return AsyncResult.failure(
@@ -1061,6 +1071,7 @@ export function useThreadActions() {
     reorderActiveThread,
     markThreadUnread,
     setThreadAutoSettle,
+    setThreadCompaction,
     turnThreadIntoProject: (target: ScopedThreadRef) =>
       createProjectFromThread({
         environmentId: target.environmentId,

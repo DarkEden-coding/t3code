@@ -785,6 +785,46 @@ export type IdleCompactionMode = typeof IdleCompactionMode.Type;
 // Keep the mode in `idleCompaction`, but accept strings from older servers.
 const LegacyCompactIdleThreads = Schema.Union([Schema.Boolean, IdleCompactionMode]);
 
+/** A thread's auto-compact window in tokens, or "off" to turn automatic compaction off. */
+export const ThreadAutoCompactWindow = Schema.Union([
+  Schema.Literal("off"),
+  Schema.Int.check(Schema.isBetween({ minimum: 100_000, maximum: 1_000_000 })),
+]);
+export type ThreadAutoCompactWindow = typeof ThreadAutoCompactWindow.Type;
+
+/** Per-thread compaction overrides. An absent key uses the instance's setting, then the default. */
+export const ThreadCompaction = Schema.Struct({
+  idleCompaction: Schema.optionalKey(IdleCompactionMode),
+  autoCompactWindow: Schema.optionalKey(ThreadAutoCompactWindow),
+});
+export type ThreadCompaction = typeof ThreadCompaction.Type;
+
+/** Absent keys stay as they are; null clears the override. */
+export const ThreadCompactionUpdate = Schema.Struct({
+  idleCompaction: Schema.optionalKey(Schema.NullOr(IdleCompactionMode)),
+  autoCompactWindow: Schema.optionalKey(Schema.NullOr(ThreadAutoCompactWindow)),
+});
+export type ThreadCompactionUpdate = typeof ThreadCompactionUpdate.Type;
+
+export const applyThreadCompactionUpdate = (
+  current: ThreadCompaction | undefined,
+  update: ThreadCompactionUpdate,
+): ThreadCompaction | undefined => {
+  const idleCompaction =
+    update.idleCompaction === undefined ? current?.idleCompaction : update.idleCompaction;
+  const autoCompactWindow =
+    update.autoCompactWindow === undefined ? current?.autoCompactWindow : update.autoCompactWindow;
+  const next = {
+    ...(idleCompaction == null ? {} : { idleCompaction }),
+    ...(autoCompactWindow == null ? {} : { autoCompactWindow }),
+  };
+  return Object.keys(next).length === 0 ? undefined : next;
+};
+
+interface ThreadWithCompaction {
+  readonly compaction?: ThreadCompaction | null | undefined;
+}
+
 const INSTANCE_IDLE_COMPACTION_MODES = [
   { value: "default", label: "Use default" },
   ...IDLE_COMPACTION_MODES,
@@ -1729,19 +1769,45 @@ export const idleCompactionPatch = (settings: IdleCompactionSettings, mode: Idle
       ? { compactIdleThreads: mode }
       : { compactIdleThreads: mode === "beforeCacheExpires" };
 
-export const resolveIdleCompaction = (
-  settings: Pick<ServerSettings, "providerInstances" | "compactIdleThreads" | "idleCompaction">,
+const claudeInstanceSettings = (
+  settings: Pick<ServerSettings, "providerInstances">,
   instanceId: ProviderInstanceId,
-): IdleCompactionMode => {
+): ClaudeSettings | undefined => {
   const instance = Object.hasOwn(settings.providerInstances, instanceId)
     ? settings.providerInstances[instanceId]
     : undefined;
-  const override = decodeClaudeSettings(instance?.config ?? {}).pipe(
-    Option.map((config) => config.idleCompaction),
-    Option.getOrElse(() => "default" as const),
-  );
+  return Option.getOrUndefined(decodeClaudeSettings(instance?.config ?? {}));
+};
+
+/** The thread's mode, else the instance's, else the environment's. */
+export const resolveIdleCompaction = (
+  settings: Pick<ServerSettings, "providerInstances" | "compactIdleThreads" | "idleCompaction">,
+  instanceId: ProviderInstanceId,
+  thread?: ThreadWithCompaction | null,
+): IdleCompactionMode => {
+  const threadMode = thread?.compaction?.idleCompaction;
+  if (threadMode !== undefined) return threadMode;
+  const override = claudeInstanceSettings(settings, instanceId)?.idleCompaction ?? "default";
   return override === "default" ? globalIdleCompaction(settings) : override;
 };
+
+/**
+ * The thread's auto-compact window, else the instance's. "" leaves Claude's own default and "off"
+ * turns automatic compaction off.
+ */
+export const resolveAutoCompactWindowSetting = (
+  instanceWindow: string,
+  thread?: ThreadWithCompaction | null,
+): string => {
+  const threadWindow = thread?.compaction?.autoCompactWindow;
+  return threadWindow === undefined ? instanceWindow : String(threadWindow);
+};
+
+/** The auto-compact window an instance sets, or "" for Claude's own default. */
+export const instanceAutoCompactWindow = (
+  settings: Pick<ServerSettings, "providerInstances">,
+  instanceId: ProviderInstanceId,
+): string => claudeInstanceSettings(settings, instanceId)?.autoCompactWindow ?? "";
 
 export const ServerSettingsOperation = Schema.Literals([
   "normalize",

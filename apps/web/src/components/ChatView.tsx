@@ -2627,6 +2627,7 @@ export default function ChatView(props: ChatViewProps) {
     resolveIdleCompaction(
       settings,
       activeProviderInstanceId ?? ProviderInstanceId.make("claudeAgent"),
+      serverThread?.source,
     ) !== "off" &&
     !resumeCompactionPermanentlyDismissed &&
     !nativeResumeCompactionDismissed &&

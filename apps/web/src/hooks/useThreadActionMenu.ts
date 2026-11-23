@@ -21,9 +21,11 @@ import { pickSnoozePreset, resolveSnoozePresets } from "../components/Sidebar.sn
 import {
   buildThreadActionMenuItems,
   threadActionRequiresOperate,
+  threadCompactionUpdateForAction,
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
 import { titleRegenerationToast } from "../components/threadTitleRegenerationToast";
+import { readThreadCompactionMenuState } from "../components/threadCompactionMenu";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { m } from "../i18n/messages";
@@ -87,6 +89,7 @@ export function useThreadActionMenu(input: {
     pinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
+    setThreadCompaction,
     archiveThread,
     deleteThread,
     markThreadUnread,
@@ -154,6 +157,7 @@ export function useThreadActionMenu(input: {
         snoozePresets,
         canShareWithGuest,
         canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+        compaction: readThreadCompactionMenuState(thread),
       });
       const clicked = await settlePromise(() => api.contextMenu.show(items, position));
       if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -194,6 +198,13 @@ export function useThreadActionMenu(input: {
           failureToast(title, squashAtomCommandFailure(result));
         }
       };
+      const compactionUpdate = threadCompactionUpdateForAction(action);
+      if (compactionUpdate) {
+        await reportFailure(m(msg("Failed to update compaction")), () =>
+          setThreadCompaction(threadRef, compactionUpdate),
+        );
+        return;
+      }
       switch (action) {
         case "find":
           onFind?.(threadRef);
