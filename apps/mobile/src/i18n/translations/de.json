@@ -5765,5 +5765,7 @@
   "f6cf1627f4acc5ef": "Sichtbarkeit des Kommentars",
   "eb1fd384ad5919dd": "Interne Notiz",
   "b45f0b467e9406d0": "Dem Kunden antworten",
-  "15e5597f8f93ce12": "{start} bis {end}"
+  "15e5597f8f93ce12": "{start} bis {end}",
+  "e4908a3e80b94293": "{status, select, inProgress {Markiere diese Runde mit einem Stern} completed {Diese Runde mit einem Stern markiert} failed {Diese Runde konnte nicht markiert werden} declined {Markieren dieser Runde abgelehnt} stopped {Markieren dieser Runde gestoppt} other {Markiere diese Runde mit einem Stern}}",
+  "580044246c992364": "Diese Runde markieren"
 }

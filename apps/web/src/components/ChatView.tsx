@@ -319,6 +319,7 @@ import {
 } from "./chat/ChatOverlayHosts";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { useCitedHistory } from "./chat/citationProcedure";
+import { starRevealRequest } from "./starred/starReveal";
 import type { MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { ThreadTimeline } from "./chat/ThreadTimeline";
 import { NativeChildWorkDialog } from "./chat/NativeChildWorkDialog";
@@ -646,7 +647,7 @@ export default function ChatView(props: ChatViewProps) {
     locationCitation.environmentId === environmentId &&
     locationCitation.threadId === threadId
       ? { citation: locationCitation, key: citationActivation }
-      : null
+      : starRevealRequest(citationLocation.href, citationActivation, environmentId, threadId)
   ) as AssistantCitationRequest | null;
   useSideChatCitationReveal(embedded ? null : routeThreadRef, locationCitation, citationActivation);
   const citationHistory = useCitedHistory(citationRequest);

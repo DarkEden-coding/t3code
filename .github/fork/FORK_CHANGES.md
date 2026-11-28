@@ -44,6 +44,26 @@ change: what it does, which upstream files it touches, and what must survive a m
   web `Sidebar.tsx`, `useThreadActionMenu.ts` and the thread MCP handlers.
 - Must survive: thread over instance over environment resolution, and a compaction-only update keeps `updatedAt`.
 
+## Starred turns
+
+- Agents call `t3_turn_star` (thread toolkit, optional `note`) to star their running turn; the star lands
+  on the turn's final assistant message when the run ends. The user stars or unstars a turn's final
+  message from its hover bar, and sees every star in a sidebar "Starred" list (count, per-item remove,
+  Clear all). No notifications.
+- New files: `packages/contracts/src/turnStar.ts` (schemas, `turnStars.*` RPCs, 200-star cap),
+  `apps/server/src/turnStars/TurnStarService.ts`, web `components/starred/*` and `state/turnStars.ts`.
+- Small hooks in upstream files: contracts `rpc.ts` (spreads `TURN_STAR_WS_METHODS` and `TurnStarRpcs`),
+  `index.ts`, `clientRpcPermissions.ts`, `environment.ts` (`turnStars` capability); server `ws.ts`,
+  `RpcAuthorization.ts`, `RpcInstrumentation.ts`, `runtimeLayer.ts` (`layerProduction`),
+  `ServerEnvironment.ts`, thread `tools.ts`/`handlers.ts`, `ClaudeAdapterV2.ts` read-only list,
+  `agentContextBudget.json`; shared `t3McpToolPresentation.ts` and its `Copy`; client-runtime
+  `rpc/client.ts`, `state/server.ts`, `work-log/t3ToolSentences.ts`; web `Sidebar.tsx` (one line),
+  `TimelineAssistantRows.tsx` (star button), `ChatView.tsx` and `AssistantCitationSource.tsx`
+  (`revealOnly` reuses the citation reveal to scroll to a starred message); i18n keys appended.
+- Must survive: `turn_stars` is created at runtime by `ensureTurnStarTable`, not a numbered migration.
+  `TurnStarService` is a `Context.Reference` so upstream test harnesses need no fork mock; production
+  provides `TurnStarService.layer`. Stars outlive settle and archive; a deleted thread's stars go.
+
 ## Fork-only files (always keep the fork's version)
 
 - `.github/workflows/fork-*.yml`, `.github/fork/**`, `scripts/disable-upstream-workflows.sh`

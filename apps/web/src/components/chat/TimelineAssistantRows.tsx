@@ -24,6 +24,8 @@ import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { TimelineRowCtx, TimelineRowActivityCtx, type TimelineRow } from "./timelineRowContext";
 import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts";
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { AssistantStarButton } from "../starred/MessageStar";
+import { useMessageStarred } from "../../state/turnStars";
 
 export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -210,12 +212,13 @@ function AssistantMessageMeta({
 }) {
   const ctx = use(TimelineRowCtx);
   const m = useMessages();
+  const starred = useMessageStarred(ctx.threadRef?.environmentId ?? null, message.id);
 
   return (
     <div
       className={cn(
         "flex items-center gap-2 text-xs tabular-nums transition-opacity duration-200",
-        alwaysVisible
+        alwaysVisible || starred
           ? "opacity-100"
           : "opacity-0 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100",
         className,
@@ -234,6 +237,14 @@ function AssistantMessageMeta({
       ) : null}
       {!message.streaming && projectedItem ? (
         <AssistantReplyButton message={message} itemId={projectedItem.sourceItemId} />
+      ) : null}
+      {!message.streaming && ctx.threadRef && message.role === "assistant" ? (
+        <AssistantStarButton
+          threadRef={ctx.threadRef}
+          threadId={projectedItem?.sourceThreadId ?? ctx.threadRef.threadId}
+          messageId={message.id}
+          starred={starred}
+        />
       ) : null}
       {!message.streaming && (
         <SharedTooltipTrigger

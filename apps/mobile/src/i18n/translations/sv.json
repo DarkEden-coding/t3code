@@ -5765,5 +5765,7 @@
   "f6cf1627f4acc5ef": "Kommentarens synlighet",
   "eb1fd384ad5919dd": "Intern anteckning",
   "b45f0b467e9406d0": "Svara kunden",
-  "15e5597f8f93ce12": "{start} till {end}"
+  "15e5597f8f93ce12": "{start} till {end}",
+  "e4908a3e80b94293": "{status, select, inProgress {Stjärnmärker den här rundan} completed {Stjärnmärkte den här rundan} failed {Kunde inte stjärnmärka den här rundan} declined {Avböjde att stjärnmärka den här rundan} stopped {Slutade stjärnmärka den här rundan} other {Stjärnmärker den här rundan}}",
+  "580044246c992364": "Stjärnmärk den här rundan"
 }

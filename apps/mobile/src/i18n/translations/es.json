@@ -5759,5 +5759,7 @@
   "f6cf1627f4acc5ef": "Visibilidad del comentario",
   "eb1fd384ad5919dd": "Nota interna",
   "b45f0b467e9406d0": "Responder al cliente",
-  "15e5597f8f93ce12": "{start} a {end}"
+  "15e5597f8f93ce12": "{start} a {end}",
+  "e4908a3e80b94293": "{status, select, inProgress {Destacando este turno} completed {Se destacó este turno} failed {No se pudo destacar este turno} declined {Se rechazó destacar este turno} stopped {Se dejó de destacar este turno} other {Destacando este turno}}",
+  "580044246c992364": "Destacar este turno"
 }

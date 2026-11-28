@@ -5746,5 +5746,7 @@
   "f6cf1627f4acc5ef": "评论可见范围",
   "eb1fd384ad5919dd": "内部备注",
   "b45f0b467e9406d0": "回复客户",
-  "15e5597f8f93ce12": "{start} 至 {end}"
+  "15e5597f8f93ce12": "{start} 至 {end}",
+  "e4908a3e80b94293": "{status, select, inProgress {正在为此轮加星标} completed {已为此轮加星标} failed {无法为此轮加星标} declined {已拒绝为此轮加星标} stopped {已停止为此轮加星标} other {正在为此轮加星标}}",
+  "580044246c992364": "为此轮加星标"
 }

@@ -13107,5 +13107,18 @@
   "5807c08e225c6b3d": "Download",
   "0d50b5bfe7151ece": "Could not download file",
   "eb1fd384ad5919dd": "Internal note",
-  "b45f0b467e9406d0": "Reply to customer"
+  "b45f0b467e9406d0": "Reply to customer",
+  "e4908a3e80b94293": "{status, select, inProgress {Starring this turn} completed {Starred this turn} failed {Failed to star this turn} declined {Declined to star this turn} stopped {Stopped starring this turn} other {Starring this turn}}",
+  "580044246c992364": "Star this turn",
+  "a4ad292374e09968": "Could not update the star",
+  "e0089381a8b2b4b6": "Remove star",
+  "3450630a34bd0ac6": "Star this response",
+  "89ca316152a6ac4c": "Starred. Click to remove the star",
+  "da95ac6c50ddbd0d": "Star this response",
+  "7d71021951c229b4": "Could not update the stars",
+  "c5b2b5b6af8772f8": "{count, plural, one {Clear {count} starred message?} other {Clear all {count} starred messages?}}",
+  "83fdfbe28d405af1": "Starred",
+  "5981ed55c724306d": "Starred",
+  "7f485d3cbfd284c9": "Clear all",
+  "a438ccea82a8dcbf": "Done. Remove from Starred"
 }

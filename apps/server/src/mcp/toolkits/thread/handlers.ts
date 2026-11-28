@@ -29,6 +29,7 @@ import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import { rejectionText } from "../../../orchestration-v2/runOutput.ts";
+import * as TurnStars from "../../../turnStars/TurnStarService.ts";
 import { ThreadToolkit } from "./tools.ts";
 
 function queueEntry(
@@ -344,6 +345,20 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
               : unavailable(),
           ),
         );
+    }),
+  ),
+  t3_turn_star: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const { caller } = yield* readCaller();
+      if (caller?.activeRunId == null)
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: "This thread has no running turn to star.",
+        });
+      yield* (yield* TurnStars.TurnStarService)
+        .starRun({ threadId: caller.id, runId: caller.activeRunId, note: input.note })
+        .pipe(Effect.mapError(unavailable));
+      return { starred: true as const };
     }),
   ),
   t3_queue: McpToolAccess.either(
