@@ -261,7 +261,6 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
-import { SidebarStarredSection } from "./starred/SidebarStarredSection";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipScrollDismissArea } from "./ui/tooltip";
@@ -3530,7 +3529,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               )}
             </div>
           ) : null}
-          {!isSearchingThreads ? <SidebarStarredSection /> : null}
           {!isSearchingThreads ? (
             <DndContext
               sensors={dndSensors}

@@ -5266,11 +5266,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }
         case "thread.metadata.update": {
           const { type: _type, commandId: _commandId, threadId: _threadId, ...changes } = command;
-          // Compaction overrides are settings, not activity, so the thread keeps its list place.
+          // Compaction overrides and focus view are settings, not activity, so the thread keeps its list place.
           const compactionOnly =
-            command.compaction !== undefined &&
+            (command.compaction !== undefined || command.focusView !== undefined) &&
             Object.entries(changes).every(
-              ([key, value]) => key === "compaction" || value === undefined,
+              ([key, value]) => key === "compaction" || key === "focusView" || value === undefined,
             );
           const previousRecovery =
             thread.limitRecovery?.runId === command.limitRecovery?.runId &&
@@ -5296,6 +5296,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             ...(command.compaction === undefined
               ? {}
               : { compaction: applyThreadCompactionUpdate(thread.compaction, command.compaction) }),
+            ...(command.focusView === undefined ? {} : { focusView: command.focusView }),
             ...(command.limitRecovery !== undefined &&
             limitRecovery?.snooze === true &&
             Date.parse(limitRecovery.resetAt) > DateTime.toEpochMillis(now)

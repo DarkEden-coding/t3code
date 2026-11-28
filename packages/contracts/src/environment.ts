@@ -142,6 +142,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadAutoSettleOptOut: Schema.optionalKey(Schema.Boolean),
   /** Stores `compaction` from `thread.metadata.update`; older servers drop it. */
   threadCompactionOverrides: Schema.optionalKey(Schema.Boolean),
+  /** Stores `focusView` from `thread.metadata.update`; older servers drop it. */
+  threadFocusView: Schema.optionalKey(Schema.Boolean),
   /** Serves `turnStars.*` and `t3_turn_star`. */
   turnStars: Schema.optionalKey(Schema.Boolean),
   threadProjectFromScratch: Schema.optionalKey(Schema.Boolean),

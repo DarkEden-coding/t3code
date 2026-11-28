@@ -48,8 +48,8 @@ change: what it does, which upstream files it touches, and what must survive a m
 
 - Agents call `t3_turn_star` (thread toolkit, optional `note`) to star their running turn; the star lands
   on the turn's final assistant message when the run ends. The user stars or unstars a turn's final
-  message from its hover bar, and sees every star in a sidebar "Starred" list (count, per-item remove,
-  Clear all). No notifications.
+  message from its hover bar, and sees the thread's stars in the "Starred" section of the thread details
+  panel (count, per-item remove, Clear all for that thread). No notifications.
 - New files: `packages/contracts/src/turnStar.ts` (schemas, `turnStars.*` RPCs, 200-star cap),
   `apps/server/src/turnStars/TurnStarService.ts`, web `components/starred/*` and `state/turnStars.ts`.
 - Small hooks in upstream files: contracts `rpc.ts` (spreads `TURN_STAR_WS_METHODS` and `TurnStarRpcs`),
@@ -57,12 +57,33 @@ change: what it does, which upstream files it touches, and what must survive a m
   `RpcAuthorization.ts`, `RpcInstrumentation.ts`, `runtimeLayer.ts` (`layerProduction`),
   `ServerEnvironment.ts`, thread `tools.ts`/`handlers.ts`, `ClaudeAdapterV2.ts` read-only list,
   `agentContextBudget.json`; shared `t3McpToolPresentation.ts` and its `Copy`; client-runtime
-  `rpc/client.ts`, `state/server.ts`, `work-log/t3ToolSentences.ts`; web `Sidebar.tsx` (one line),
-  `TimelineAssistantRows.tsx` (star button), `ChatView.tsx` and `AssistantCitationSource.tsx`
+  `rpc/client.ts`, `state/server.ts`, `work-log/t3ToolSentences.ts`; web `ThreadDetailsPanel.tsx` and
+  `threadDetailsItems.ts` (the `starred` item), `TimelineAssistantRows.tsx` (star button), `ChatView.tsx` and `AssistantCitationSource.tsx`
   (`revealOnly` reuses the citation reveal to scroll to a starred message); i18n keys appended.
 - Must survive: `turn_stars` is created at runtime by `ensureTurnStarTable`, not a numbered migration.
   `TurnStarService` is a `Context.Reference` so upstream test harnesses need no fork mock; production
   provides `TurnStarService.layer`. Stars outlive settle and archive; a deleted thread's stars go.
+
+## Focus view
+
+- A per-thread switch under Starred in the thread details panel. On, the timeline shows the user's own
+  messages (`resolveUserMessagePresentation` attribution null or guest), the final reply of each turn,
+  and every starred message with the message its turn answered. Each run of other turns (agent-sent via
+  `senderThreadId`/`linkedSender`, scheduled tasks, T3 Code, notifications) folds into one
+  "N agent messages hidden" line that opens in place, dimmed. The header shows "Focus · N hidden";
+  clicking it turns focus view off.
+- Stored as `focusView` on the thread (`OrchestrationV2AppThread`, `OrchestrationV2ThreadShell`) through
+  `thread.metadata.update`, like the compaction overrides; a setting-only update keeps `updatedAt`.
+  `threadFocusView` capability hides the switch for older servers.
+- New files: web `components/focus/*` (the row filter is `focusView.logic.ts`, tested) and
+  `components/starred/ThreadStarredPanel.tsx`.
+- Small hooks in upstream files: contracts `orchestrationV2.ts`, `environment.ts`; server
+  `Orchestrator.ts` (metadata update), `ProjectionStore.ts` (two shell mappers), `ServerEnvironment.ts`;
+  client-runtime `operations/commands.ts`; web `MessagesTimeline.logic.ts` (row union, `focus` mark,
+  `isRowUnchanged` case), `MessagesTimeline.tsx` (wraps `useStableRows`, renders the divider and mark),
+  `ChatView.tsx` (one prop), `ChatHeader.tsx` (pill).
+- Must survive: the filter runs on the timeline's final rows, after `useStableRows`, so upstream row
+  derivation stays untouched. If upstream adds row kinds, they pass through unchanged.
 
 ## Fork-only files (always keep the fork's version)
 

@@ -2065,6 +2065,9 @@ export function threadShellFromProjection(
     ...(projection.thread.compaction === undefined
       ? {}
       : { compaction: projection.thread.compaction }),
+    ...(projection.thread.focusView === undefined
+      ? {}
+      : { focusView: projection.thread.focusView }),
     deletedAt: projection.thread.deletedAt,
   };
 }
@@ -2373,6 +2376,9 @@ function shellFromState(input: {
     ...(input.state.thread.compaction === undefined
       ? {}
       : { compaction: input.state.thread.compaction }),
+    ...(input.state.thread.focusView === undefined
+      ? {}
+      : { focusView: input.state.thread.focusView }),
     deletedAt: input.state.thread.deletedAt,
   };
 }
