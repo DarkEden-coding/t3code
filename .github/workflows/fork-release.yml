@@ -7,7 +7,9 @@
 name: Fork release
 
 on:
-  # Started by fork-sync after each nightly sync (see its "Start the nightly release" step), or by hand.
+  # The upstream merge task on power-server pushes main after a green merge; PR merges push main too.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       force:
@@ -40,7 +42,7 @@ jobs:
       clerk_cli_oauth_client_id: ${{ steps.public_config.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ steps.public_config.outputs.relay_url }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: main
           fetch-depth: 0
@@ -77,14 +79,15 @@ jobs:
       # nightly track (scripts/build-desktop-artifact.ts resolveDesktopUpdateChannel).
       # The run number is offset by 900000. Fork tags then never collide with upstream
       # tags copied into the fork, and a fork nightly sorts above an upstream nightly
-      # from the same day.
+      # from the same day. The extra 10 continues the numbering of the old fork repo
+      # (DarkEden-coding/t3code-old), whose last nightly was 900010.
       - name: Resolve nightly version
         id: meta
         if: steps.gate.outputs.skip == 'false'
         run: |
           node scripts/resolve-nightly-release.ts \
             --date "$(date -u +%Y%m%d)" \
-            --run-number "$((900000 + ${{ github.run_number }}))" \
+            --run-number "$((900010 + ${{ github.run_number }}))" \
             --sha "${{ steps.gate.outputs.ref }}" \
             --github-output
 
@@ -116,7 +119,7 @@ jobs:
       T3CODE_RELAY_URL: ${{ needs.preflight.outputs.relay_url }}
       T3CODE_TELEMETRY_CHANNEL: dev
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ needs.preflight.outputs.ref }}
           sparse-checkout: |
@@ -128,7 +131,7 @@ jobs:
           install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
       - run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
       - run: vp run build:desktop:bundle
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: js-bundle
           path: |
@@ -205,19 +208,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ needs.preflight.outputs.ref }}
           sparse-checkout: |
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: desktop-*
           merge-multiple: true
           path: release-assets
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: cli-*
           merge-multiple: true
@@ -244,7 +247,7 @@ jobs:
           } > release-notes.md
       # Created as a draft and published only once every asset is attached, so the
       # updater never sees a half-uploaded release (same as release.yml).
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ needs.preflight.outputs.tag }}
           target_commitish: ${{ needs.preflight.outputs.ref }}

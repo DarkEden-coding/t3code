@@ -1,7 +1,7 @@
 # Fork changes
 
-The conflict-resolution bot reads this file. Add one entry per fork change: what it does,
-which upstream files it touches, and what must survive a merge. Keep it short.
+The daily upstream merge ([merge-upstream.md](merge-upstream.md)) reads this file. Add one entry per fork
+change: what it does, which upstream files it touches, and what must survive a merge. Keep it short.
 
 ## Release plumbing (patch 0001)
 
