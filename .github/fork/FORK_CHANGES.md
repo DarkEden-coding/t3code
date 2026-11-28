@@ -35,6 +35,15 @@ change: what it does, which upstream files it touches, and what must survive a m
   `ScheduledTaskService` layer. If upstream adds its own watch type, keep the fork's until they are
   reconciled by hand.
 
+## Per-thread compaction overrides
+
+- A thread's right-click menu › Compaction sets "Compact when idle" and "Auto-compact after" for that
+  thread; agents use `t3_thread_configure`'s `compaction` field. Design: `docs/fork/thread-compaction-overrides.md`.
+- Touches: `OrchestrationV2AppThread.compaction` and `thread.metadata.update` in contracts, the resolvers
+  `resolveIdleCompaction` and `resolveAutoCompactWindowSetting`, the Claude adapter's query options,
+  web `Sidebar.tsx`, `useThreadActionMenu.ts` and the thread MCP handlers.
+- Must survive: thread over instance over environment resolution, and a compaction-only update keeps `updatedAt`.
+
 ## Fork-only files (always keep the fork's version)
 
 - `.github/workflows/fork-*.yml`, `.github/fork/**`, `scripts/disable-upstream-workflows.sh`

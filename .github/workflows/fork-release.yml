@@ -10,6 +10,8 @@ on:
   # The upstream merge task on power-server pushes main after a green merge; PR merges push main too.
   push:
     branches: [main]
+    # Notes for the merge agent don't change the apps.
+    paths-ignore: [".github/fork/**", "docs/fork/**"]
   workflow_dispatch:
     inputs:
       force:

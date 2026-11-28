@@ -7,6 +7,15 @@ and publishes the fork nightly. Nothing else in GitHub Actions merges or schedul
 Work in a dedicated clone with `origin` = `DarkEden-coding/t3code` and `upstream` = `pingdotgg/t3code`.
 `gh` must be signed in as DarkEden-coding.
 
+power-server's Vite+ runs in system-first mode, so `node` is the system's, which is older than the
+pinned one. Start every shell that runs `vp` or `node` with this, from the repo root:
+
+```sh
+. ~/.config/vite-plus/env
+v="$(node -p 'require("./package.json").engines.node')"
+vp env install "$v" >/dev/null && export PATH="$HOME/.local/share/vite-plus/js_runtime/node/$v/bin:$PATH"
+```
+
 ## Steps
 
 1. **Start clean.** `git status --porcelain` must be empty. Then `git fetch origin`, `git checkout main`,
@@ -45,7 +54,8 @@ Work in a dedicated clone with `origin` = `DarkEden-coding/t3code` and `upstream
    upstream breakage, so stop.
 7. **Push** only when every check is green:
    - No commit may carry a `Co-Authored-By` or other AI attribution trailer:
-     `git log --format=%B origin/main..HEAD | grep -i co-authored-by` must print nothing.
+     `git log --first-parent --format=%B origin/main..HEAD | grep -i co-authored-by` must print nothing
+     (`--first-parent` skips upstream's own commits, many of which have one).
    - `git push origin HEAD:refs/heads/main` (a fast-forward; never force).
    - `sh scripts/disable-upstream-workflows.sh DarkEden-coding/t3code`. New upstream workflows arrive enabled.
    - Check that a `Fork release` run started for the pushed commit:
@@ -59,3 +69,10 @@ lint rules, or type checks, and never weaken types with `any` or casts to get th
 be resolved without guessing at Elliot's intent, or a check stays red, stop. Leave the attempt on its local
 `sync/<date>` branch, return the clone to `main` (`git merge --abort` if a merge is still in progress), and
 report the tag, the failing step, the conflicted or failing files, and the error.
+
+## Updating the installed apps
+
+Nothing updates T3 automatically. A new nightly shows up in each machine's update check, and Elliot
+clicks Update, which restarts T3 on every machine. power-server's old `t3-nightly-update.timer` (it ran
+`t3 update --channel nightly --yes`) is disabled but still installed. To turn it back on:
+`systemctl --user enable --now t3-nightly-update.timer`.
