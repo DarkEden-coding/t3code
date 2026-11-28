@@ -133,6 +133,13 @@ jobs:
           install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
       - run: node scripts/update-release-package-versions.ts "${{ needs.preflight.outputs.version }}"
       - run: vp run build:desktop:bundle
+      # Same as release.yml: artifacts drop hidden files, and release-desktop.yml moves this back to client/.vite/.
+      - name: Stage web asset manifest
+        run: |
+          manifest=apps/server/dist/client/.vite/manifest.json
+          if [[ -f "$manifest" ]]; then
+            cp "$manifest" apps/server/dist/client/vite-manifest.release.json
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: js-bundle
