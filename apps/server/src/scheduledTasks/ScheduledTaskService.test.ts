@@ -852,6 +852,7 @@ it.effect("an unbound task's launch carries its name as a chosen title", () =>
           }),
           Layer.mock(ThreadManagementService.ThreadManagementService)({}),
           Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(CommandWatcher.CommandWatcher)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",
             isScratchProject: () => Effect.succeed(false),
