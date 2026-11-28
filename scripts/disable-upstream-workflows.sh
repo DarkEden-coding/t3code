@@ -19,6 +19,8 @@ gh workflow list --repo "$repo" --all --limit 200 --json path,state --jq '.[] | 
         ;;
       # release-desktop.yml is only a reusable workflow (workflow_call) that fork-release.yml calls.
       .github/workflows/release-desktop.yml) ;;
+      # GitHub's own dynamic workflows (such as Dependabot's dependency graph) have no file to disable.
+      dynamic/*) ;;
       *)
         if [ "$state" = "active" ]; then
           echo "disabling $path"
@@ -29,7 +31,7 @@ gh workflow list --repo "$repo" --all --limit 200 --json path,state --jq '.[] | 
   done
 for status in queued in_progress waiting; do
   gh api "repos/$repo/actions/runs?status=$status&per_page=100" \
-    --jq '.workflow_runs[] | select(.path | startswith(".github/workflows/fork-") | not) | .id' |
+    --jq '.workflow_runs[] | select((.path | startswith(".github/workflows/")) and (.path | startswith(".github/workflows/fork-") | not)) | .id' |
     while read -r id; do
       echo "cancelling upstream workflow run $id"
       gh run cancel --repo "$repo" "$id" || true
