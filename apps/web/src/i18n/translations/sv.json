@@ -13106,5 +13106,18 @@
   "5807c08e225c6b3d": "Ladda ned",
   "0d50b5bfe7151ece": "Det gick inte att ladda ned filen",
   "eb1fd384ad5919dd": "Intern anteckning",
-  "b45f0b467e9406d0": "Svara kunden"
+  "b45f0b467e9406d0": "Svara kunden",
+  "e4908a3e80b94293": "{status, select, inProgress {Stjärnmärker den här rundan} completed {Stjärnmärkte den här rundan} failed {Kunde inte stjärnmärka den här rundan} declined {Avböjde att stjärnmärka den här rundan} stopped {Slutade stjärnmärka den här rundan} other {Stjärnmärker den här rundan}}",
+  "580044246c992364": "Stjärnmärk den här rundan",
+  "a4ad292374e09968": "Kunde inte uppdatera stjärnan",
+  "e0089381a8b2b4b6": "Ta bort stjärna",
+  "3450630a34bd0ac6": "Stjärnmärk det här svaret",
+  "89ca316152a6ac4c": "Stjärnmärkt. Klicka för att ta bort stjärnan",
+  "da95ac6c50ddbd0d": "Stjärnmärk det här svaret",
+  "7d71021951c229b4": "Kunde inte uppdatera stjärnorna",
+  "c5b2b5b6af8772f8": "{count, plural, one {Ta bort {count} stjärnmärkt meddelande?} other {Ta bort alla {count} stjärnmärkta meddelanden?}}",
+  "83fdfbe28d405af1": "Stjärnmärkt",
+  "5981ed55c724306d": "Stjärnmärkt",
+  "7f485d3cbfd284c9": "Rensa alla",
+  "a438ccea82a8dcbf": "Klart. Ta bort från Stjärnmärkt"
 }

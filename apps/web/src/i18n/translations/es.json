@@ -13094,5 +13094,18 @@
   "5807c08e225c6b3d": "Descargar",
   "0d50b5bfe7151ece": "No se pudo descargar el archivo",
   "eb1fd384ad5919dd": "Nota interna",
-  "b45f0b467e9406d0": "Responder al cliente"
+  "b45f0b467e9406d0": "Responder al cliente",
+  "e4908a3e80b94293": "{status, select, inProgress {Destacando este turno} completed {Se destacó este turno} failed {No se pudo destacar este turno} declined {Se rechazó destacar este turno} stopped {Se dejó de destacar este turno} other {Destacando este turno}}",
+  "580044246c992364": "Destacar este turno",
+  "a4ad292374e09968": "No se pudo actualizar el destacado",
+  "e0089381a8b2b4b6": "Quitar destacado",
+  "3450630a34bd0ac6": "Destacar esta respuesta",
+  "89ca316152a6ac4c": "Destacada. Haz clic para quitar el destacado",
+  "da95ac6c50ddbd0d": "Destacar esta respuesta",
+  "7d71021951c229b4": "No se pudieron actualizar los destacados",
+  "c5b2b5b6af8772f8": "{count, plural, one {¿Quitar {count} mensaje destacado?} other {¿Quitar los {count} mensajes destacados?}}",
+  "83fdfbe28d405af1": "Destacados",
+  "5981ed55c724306d": "Destacados",
+  "7f485d3cbfd284c9": "Quitar todos",
+  "a438ccea82a8dcbf": "Hecho. Quitar de Destacados"
 }

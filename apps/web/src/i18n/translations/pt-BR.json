@@ -13099,5 +13099,18 @@
   "5807c08e225c6b3d": "Baixar",
   "0d50b5bfe7151ece": "Não foi possível baixar o arquivo",
   "eb1fd384ad5919dd": "Nota interna",
-  "b45f0b467e9406d0": "Responder ao cliente"
+  "b45f0b467e9406d0": "Responder ao cliente",
+  "e4908a3e80b94293": "{status, select, inProgress {Marcando este turno com estrela} completed {Turno marcado com estrela} failed {Não foi possível marcar este turno com estrela} declined {Marcação deste turno recusada} stopped {Marcação deste turno interrompida} other {Marcando este turno com estrela}}",
+  "580044246c992364": "Marcar este turno com estrela",
+  "a4ad292374e09968": "Não foi possível atualizar a estrela",
+  "e0089381a8b2b4b6": "Remover estrela",
+  "3450630a34bd0ac6": "Marcar esta resposta com estrela",
+  "89ca316152a6ac4c": "Com estrela. Clique para remover a estrela",
+  "da95ac6c50ddbd0d": "Marcar esta resposta com estrela",
+  "7d71021951c229b4": "Não foi possível atualizar as estrelas",
+  "c5b2b5b6af8772f8": "{count, plural, one {Remover {count} mensagem com estrela?} other {Remover todas as {count} mensagens com estrela?}}",
+  "83fdfbe28d405af1": "Com estrela",
+  "5981ed55c724306d": "Com estrela",
+  "7f485d3cbfd284c9": "Remover todas",
+  "a438ccea82a8dcbf": "Concluído. Remover de Com estrela"
 }

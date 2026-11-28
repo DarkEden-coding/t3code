@@ -13099,5 +13099,18 @@
   "5807c08e225c6b3d": "Herunterladen",
   "0d50b5bfe7151ece": "Datei konnte nicht heruntergeladen werden",
   "eb1fd384ad5919dd": "Interne Notiz",
-  "b45f0b467e9406d0": "Dem Kunden antworten"
+  "b45f0b467e9406d0": "Dem Kunden antworten",
+  "e4908a3e80b94293": "{status, select, inProgress {Markiere diese Runde mit einem Stern} completed {Diese Runde mit einem Stern markiert} failed {Diese Runde konnte nicht markiert werden} declined {Markieren dieser Runde abgelehnt} stopped {Markieren dieser Runde gestoppt} other {Markiere diese Runde mit einem Stern}}",
+  "580044246c992364": "Diese Runde markieren",
+  "a4ad292374e09968": "Der Stern konnte nicht aktualisiert werden",
+  "e0089381a8b2b4b6": "Stern entfernen",
+  "3450630a34bd0ac6": "Diese Antwort markieren",
+  "89ca316152a6ac4c": "Markiert. Klicke, um den Stern zu entfernen",
+  "da95ac6c50ddbd0d": "Diese Antwort markieren",
+  "7d71021951c229b4": "Die Sterne konnten nicht aktualisiert werden",
+  "c5b2b5b6af8772f8": "{count, plural, one {{count} markierte Nachricht entfernen?} other {Alle {count} markierten Nachrichten entfernen?}}",
+  "83fdfbe28d405af1": "Markiert",
+  "5981ed55c724306d": "Markiert",
+  "7f485d3cbfd284c9": "Alle entfernen",
+  "a438ccea82a8dcbf": "Erledigt. Aus „Markiert“ entfernen"
 }

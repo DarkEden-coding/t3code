@@ -13099,5 +13099,18 @@
   "5807c08e225c6b3d": "Télécharger",
   "0d50b5bfe7151ece": "Impossible de télécharger le fichier",
   "eb1fd384ad5919dd": "Note interne",
-  "b45f0b467e9406d0": "Répondre au client"
+  "b45f0b467e9406d0": "Répondre au client",
+  "e4908a3e80b94293": "{status, select, inProgress {Ajout de ce tour aux favoris} completed {Ce tour a été ajouté aux favoris} failed {Impossible d’ajouter ce tour aux favoris} declined {Ajout de ce tour aux favoris refusé} stopped {Ajout de ce tour aux favoris arrêté} other {Ajout de ce tour aux favoris}}",
+  "580044246c992364": "Ajouter ce tour aux favoris",
+  "a4ad292374e09968": "Impossible de mettre à jour le favori",
+  "e0089381a8b2b4b6": "Retirer des favoris",
+  "3450630a34bd0ac6": "Ajouter cette réponse aux favoris",
+  "89ca316152a6ac4c": "En favori. Cliquez pour la retirer des favoris",
+  "da95ac6c50ddbd0d": "Ajouter cette réponse aux favoris",
+  "7d71021951c229b4": "Impossible de mettre à jour les favoris",
+  "c5b2b5b6af8772f8": "{count, plural, one {Retirer {count} message des favoris ?} other {Retirer les {count} messages des favoris ?}}",
+  "83fdfbe28d405af1": "Favoris",
+  "5981ed55c724306d": "Favoris",
+  "7f485d3cbfd284c9": "Tout retirer",
+  "a438ccea82a8dcbf": "Terminé. Retirer des favoris"
 }

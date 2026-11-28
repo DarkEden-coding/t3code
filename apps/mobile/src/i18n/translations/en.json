@@ -5767,5 +5767,7 @@
   "f6cf1627f4acc5ef": "Comment audience",
   "eb1fd384ad5919dd": "Internal note",
   "b45f0b467e9406d0": "Reply to customer",
-  "15e5597f8f93ce12": "{start} to {end}"
+  "15e5597f8f93ce12": "{start} to {end}",
+  "e4908a3e80b94293": "{status, select, inProgress {Starring this turn} completed {Starred this turn} failed {Failed to star this turn} declined {Declined to star this turn} stopped {Stopped starring this turn} other {Starring this turn}}",
+  "580044246c992364": "Star this turn"
 }

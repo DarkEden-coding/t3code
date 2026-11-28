@@ -5759,5 +5759,7 @@
   "f6cf1627f4acc5ef": "Visibilidade do comentário",
   "eb1fd384ad5919dd": "Nota interna",
   "b45f0b467e9406d0": "Responder ao cliente",
-  "15e5597f8f93ce12": "{start} a {end}"
+  "15e5597f8f93ce12": "{start} a {end}",
+  "e4908a3e80b94293": "{status, select, inProgress {Marcando este turno com estrela} completed {Turno marcado com estrela} failed {Não foi possível marcar este turno com estrela} declined {Marcação deste turno recusada} stopped {Marcação deste turno interrompida} other {Marcando este turno com estrela}}",
+  "580044246c992364": "Marcar este turno com estrela"
 }

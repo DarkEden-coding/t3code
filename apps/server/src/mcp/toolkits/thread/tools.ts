@@ -22,6 +22,7 @@ import {
   NonNegativeInt,
   ProjectId,
   clampedPositiveInt,
+  TurnStarNote,
 } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Schema from "effect/Schema";
@@ -32,6 +33,7 @@ import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../../../scheduledTasks/ScheduledTaskService.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as TurnStarService from "../../../turnStars/TurnStarService.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
@@ -260,6 +262,19 @@ const SubmitOutputTool = Tool.make("t3_submit_output", {
   .annotate(Tool.Destructive, false)
   .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
+const TurnStarTool = Tool.make("t3_turn_star", {
+  ...commandTool,
+  description:
+    "Put this turn's final reply on the user's Starred list. Only when the user or their instructions ask for stars here. `note`: a short label; calling again replaces it.",
+  parameters: Schema.Struct({ note: Schema.optional(TurnStarNote) }),
+  success: Schema.Struct({ starred: Schema.Literal(true) }),
+  dependencies: [...commandTool.dependencies, TurnStarService.TurnStarService],
+})
+  // It marks only the caller's own turn, so a read-only or plan-mode agent can still star.
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
+
 export const ThreadToolkit = Toolkit.make(
   ScheduledTaskRunTool,
   ThreadSearchTool,
@@ -269,4 +284,5 @@ export const ThreadToolkit = Toolkit.make(
   PendingRequestTool,
   QueueTool,
   SubmitOutputTool,
+  TurnStarTool,
 );

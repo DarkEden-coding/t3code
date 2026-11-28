@@ -682,6 +682,14 @@ const T3_TOOL_SENTENCES: ReadonlyMap<string, T3ToolSentence> = new Map<string, T
     },
   ],
   [
+    "Star\nStarring\nStarred\nthis turn",
+    {
+      detail: msg(
+        "{status, select, inProgress {Starring this turn} completed {Starred this turn} failed {Failed to star this turn} declined {Declined to star this turn} stopped {Stopped starring this turn} other {Starring this turn}}",
+      ),
+    },
+  ],
+  [
     "Update\nUpdating\nUpdated\nT3 thread metadata",
     {
       detail: msg(

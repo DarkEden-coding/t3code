@@ -362,6 +362,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   ),
   t3_workflow: tool(["Use", "Using", "Used", "workflow runs"], "thread-send"),
   t3_submit_output: tool(["Submit", "Submitting", "Submitted", "the result"], "thread-send"),
+  t3_turn_star: tool(["Star", "Starring", "Starred", "this turn"], "thread-organize"),
   t3_queue_list: tool(["List", "Listing", "Listed", "queued messages"], "queue-list"),
   t3_queue_read: tool(["Read", "Reading", "Read", "a queued message"], "queue-read"),
   t3_queue_edit: tool(["Edit", "Editing", "Edited", "a queued message"], "queue-edit"),

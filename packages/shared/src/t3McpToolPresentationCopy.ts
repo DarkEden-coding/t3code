@@ -95,6 +95,7 @@ const DISPLAY_NAMES: ReadonlyMap<string, string> = new Map([
   ["Search thread content", msg("Search thread content")],
   ["Read thread transfers", msg("Read thread transfers")],
   ["Organize a thread", msg("Organize a thread")],
+  ["Star this turn", msg("Star this turn")],
   ["Update T3 thread metadata", msg("Update T3 thread metadata")],
   ["List workspace branches", msg("List workspace branches")],
   ["List preview tabs", msg("List preview tabs")],

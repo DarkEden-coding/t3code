@@ -1691,6 +1691,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-tasks:live",
       tag: WS_METHODS.scheduledTasksSubscribe,
     }),
+    turnStarsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:turn-stars:live",
+      tag: WS_METHODS.turnStarsSubscribe,
+    }),
     // A cold transcript scan is measured in seconds, so keep the result around
     // long enough that switching windows or re-rendering does not rescan. With
     // nothing to show yet, the server's last scan answers first, then a plain
@@ -1983,6 +1987,14 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.scheduledTasksDelete,
       scheduler: configScheduler,
       concurrency: configConcurrency,
+    }),
+    setTurnStar: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:turn-star:set",
+      tag: WS_METHODS.turnStarsSet,
+    }),
+    clearTurnStars: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:turn-star:clear-all",
+      tag: WS_METHODS.turnStarsClearAll,
     }),
     // Deliberately not on the config lane: run-now blocks until the run is
     // dispatched, and a slow run must not stall settings/keybinding/provider
