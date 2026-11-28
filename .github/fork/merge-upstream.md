@@ -58,8 +58,12 @@ vp env install "$v" >/dev/null && export PATH="$HOME/.local/share/vite-plus/js_r
      (`--first-parent` skips upstream's own commits, many of which have one).
    - `git push origin HEAD:refs/heads/main` (a fast-forward; never force).
    - `sh scripts/disable-upstream-workflows.sh DarkEden-coding/t3code`. New upstream workflows arrive enabled.
-   - Check that a `Fork release` run started for the pushed commit:
-     `gh run list --repo DarkEden-coding/t3code --workflow fork-release.yml --limit 1`.
+   - Find the `Fork release` run for the pushed commit
+     (`gh run list --repo DarkEden-coding/t3code --workflow fork-release.yml --limit 1`) and wait for it:
+     `gh run watch --repo DarkEden-coding/t3code <run id> --exit-status`. It takes about 30 minutes.
+     If it fails, report it like a failed merge, with the failing job, step and error lines
+     (`gh run view --repo DarkEden-coding/t3code <run id> --log-failed`). Upstream changes to
+     `release.yml` often need a matching change in `fork-release.yml`.
    - `git checkout main && git merge --ff-only origin/main`, and delete the local sync branch.
 
 ## When it can't finish
