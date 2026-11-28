@@ -1,8 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId, MessageId, TurnStar } from "@t3tools/contracts";
+import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { EnvironmentId, MessageId, ScopedThreadRef, TurnStar } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
 
-import { environmentSummaries } from "./presentation";
 import { environmentServerConfigsAtom, serverEnvironment } from "./server";
 
 export interface EnvironmentTurnStar extends TurnStar {
@@ -37,15 +37,20 @@ const supportsTurnStarsAtom = Atom.family((environmentId: EnvironmentId) =>
   ),
 );
 
-/** Every connected environment's stars, newest first. */
-const allStarsAtom = Atom.make((get) =>
-  get(environmentSummaries.connectedEnvironmentIdsAtom)
-    .flatMap((environmentId) => get(environmentStarsAtom(environmentId)))
-    .toSorted((left, right) => right.starredAt.localeCompare(left.starredAt)),
-).pipe(Atom.withLabel("turn-stars:all"));
+/** One thread's stars, newest first, as the server sends them. */
+const threadStarsAtom = Atom.family((key: string) =>
+  Atom.make((get) => {
+    const ref = parseScopedThreadKey(key);
+    return ref === null
+      ? NO_STARS
+      : get(environmentStarsAtom(ref.environmentId)).filter(
+          (star) => star.threadId === ref.threadId,
+        );
+  }).pipe(Atom.withLabel(`turn-stars:thread:${key}`)),
+);
 
-export function useAllTurnStars(): ReadonlyArray<EnvironmentTurnStar> {
-  return useAtomValue(allStarsAtom);
+export function useThreadTurnStars(thread: ScopedThreadRef): ReadonlyArray<EnvironmentTurnStar> {
+  return useAtomValue(threadStarsAtom(scopedThreadKey(thread)));
 }
 
 const NO_STARRED_IDS: ReadonlySet<MessageId> = new Set();
@@ -61,16 +66,10 @@ export function useMessageStarred(
   );
 }
 
-/** Environments whose stars this client may remove. */
-const writableStarEnvironmentIdsAtom = Atom.make((get): ReadonlySet<EnvironmentId> => {
-  const ids = get(environmentSummaries.connectedEnvironmentIdsAtom).filter((environmentId) =>
-    get(serverEnvironment.setTurnStar.permissionAtom(environmentId)),
+export function useStarredMessageIds(environmentId: EnvironmentId | null): ReadonlySet<MessageId> {
+  return useAtomValue(
+    environmentId === null ? NO_STARRED_IDS_ATOM : starredMessageIdsAtom(environmentId),
   );
-  return new Set(ids);
-}).pipe(Atom.withLabel("turn-stars:writable"));
-
-export function useWritableStarEnvironmentIds(): ReadonlySet<EnvironmentId> {
-  return useAtomValue(writableStarEnvironmentIdsAtom);
 }
 
 export function useSupportsTurnStars(environmentId: EnvironmentId): boolean {

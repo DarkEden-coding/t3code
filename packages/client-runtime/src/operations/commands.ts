@@ -157,6 +157,7 @@ export interface UpdateThreadMetadataInput extends ThreadCommandInput {
   readonly regenerateTitle?: boolean;
   readonly linkedPullRequest?: ThreadLinkedPullRequest | null;
   readonly compaction?: import("@t3tools/contracts").ThreadCompactionUpdate;
+  readonly focusView?: boolean;
   readonly expectedEmpty?: boolean;
 }
 
@@ -726,7 +727,8 @@ export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadM
       input.regenerateTitle !== undefined ||
       input.linkedPullRequest !== undefined ||
       input.limitRecovery !== undefined ||
-      input.compaction !== undefined
+      input.compaction !== undefined ||
+      input.focusView !== undefined
     ) {
       result = yield* dispatch({
         type: "thread.metadata.update",
@@ -742,6 +744,7 @@ export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadM
           ? {}
           : { linkedPullRequest: input.linkedPullRequest }),
         ...(input.compaction === undefined ? {} : { compaction: input.compaction }),
+        ...(input.focusView === undefined ? {} : { focusView: input.focusView }),
       });
     }
     if (input.modelSelection !== undefined) {

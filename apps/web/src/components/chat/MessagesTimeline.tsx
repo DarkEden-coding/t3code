@@ -145,6 +145,8 @@ import {
 import { useThreadFindPositionReader } from "./useThreadFindPositionReader";
 import { ThreadActivityAnnouncer } from "./ThreadActivityAnnouncer";
 import { useStableHandoffRuns, useIncrementalTimelineRows, useStableRows } from "./useTimelineRows";
+import { useFocusTimelineRows } from "../focus/focusViewState";
+import { FocusHiddenTimelineRow, FocusSenderLabel } from "../focus/FocusTimelineRows";
 import { useClientSettings } from "../../hooks/useSettings";
 
 function timelineListStateFor(identity: string): {
@@ -233,6 +235,8 @@ export interface MessagesTimelineHistoryControls {
 }
 
 interface MessagesTimelineProps {
+  /** The thread's scoped key while its focus view is on. */
+  focusViewThreadKey?: string | null;
   pendingApprovals?: ReadonlyArray<PendingApproval>;
   heldApprovalRequestIds?: ReadonlySet<string> | undefined;
   respondingRequestIds?: TimelineRowSharedState["respondingRequestIds"];
@@ -362,6 +366,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 }
 
 const ConversationTimeline = memo(function ConversationTimeline({
+  focusViewThreadKey = null,
   pendingApprovals = EMPTY_PENDING_APPROVALS,
   heldApprovalRequestIds,
   respondingRequestIds = EMPTY_RESPONDING_REQUEST_IDS,
@@ -781,7 +786,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     toolCallVisibility,
     revealedMessageId,
   });
-  const rows = useStableRows(rawRows, listIdentityKey);
+  const rows = useFocusTimelineRows(useStableRows(rawRows, listIdentityKey), focusViewThreadKey);
   const matchedApprovalRequestIds = new Set<string>();
   for (const row of pendingApprovalRequestIds.size > 0 ? rows : []) {
     const entries =
@@ -1686,7 +1691,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       className={cn(
         isWorkLogRow || isSubagentGroup
           ? undefined
-          : row.kind === "turn-fold" || row.kind === "working"
+          : row.kind === "turn-fold" || row.kind === "working" || row.kind === "focus-hidden"
             ? "pb-1.5"
             : row.kind === "message" && row.groupedWithNext
               ? "pb-1"
@@ -1706,6 +1711,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           row.kind === "assistant-meta"
           ? "group/assistant"
           : null,
+        row.focus?.dimmed && "border-s border-dashed border-border ps-3 opacity-55",
       )}
       data-timeline-row-id={row.id}
       data-timeline-row-kind={row.kind}
@@ -1713,7 +1719,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         row.kind === "message" || row.kind === "assistant-meta" ? row.message.id : undefined
       }
       data-message-role={row.kind === "message" ? row.message.role : undefined}
+      data-focus-dimmed={row.focus?.dimmed ? "" : undefined}
     >
+      {row.focus?.source ? <FocusSenderLabel source={row.focus.source} /> : null}
       {isWorkLogRow ? (
         <WorkLogBlock
           continues={row.continuesWorkLog}
@@ -1738,6 +1746,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           {row.kind === "thinking" ? <ThinkingTimelineRow row={row} /> : null}
         </WorkLogBlock>
       ) : null}
+      {row.kind === "focus-hidden" ? <FocusHiddenTimelineRow row={row} /> : null}
       {row.kind === "turn-fold" ? <TurnFoldTimelineRow key={row.id} row={row} /> : null}
       {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}

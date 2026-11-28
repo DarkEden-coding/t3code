@@ -547,6 +547,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   lastSnoozeWakeAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   compaction: Schema.optional(ThreadCompaction),
+  /** Focus view: the thread shows the user's messages, final replies and stars (fork). */
+  focusView: Schema.optional(Schema.Boolean),
   guestShare: Schema.optional(Schema.NullOr(ThreadGuestShare)),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -2486,6 +2488,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecovery)),
   /** Absent from older servers, which have no per-thread compaction overrides. */
   compaction: Schema.optional(ThreadCompaction),
+  /** Absent from servers without focus view. */
+  focusView: Schema.optional(Schema.Boolean),
   pinnedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   autoSettleDisabledAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -3506,6 +3510,7 @@ export const OrchestrationV2Command = Schema.Union([
     expectedEmpty: Schema.optional(Schema.Boolean),
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
     compaction: Schema.optional(ThreadCompactionUpdate),
+    focusView: Schema.optional(Schema.Boolean),
     /** Link (object) or unlink (null) a pull request; absent leaves it unchanged. */
     linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   }),

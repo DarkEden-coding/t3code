@@ -25,6 +25,7 @@ import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadRepositorySections } from "./ThreadRepositorySections";
 import { ThreadServersPanel } from "./ThreadServersPanel";
+import { ThreadStarredPanel } from "../starred/ThreadStarredPanel";
 import {
   ThreadDetailsContext,
   ThreadDetailsUsage,
@@ -302,6 +303,10 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     ) : null}
                   </div>
                 </ThreadDetailsSection>
+              ) : null}
+
+              {density === "full" && !props.draftId && visible.starred ? (
+                <ThreadStarredPanel environmentId={props.environmentId} threadId={props.threadId} />
               ) : null}
 
               {density === "full" && !props.draftId && visible.servers ? (

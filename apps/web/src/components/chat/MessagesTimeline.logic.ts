@@ -83,6 +83,11 @@ import {
   formatSearchToolLabel,
 } from "@t3tools/shared/toolActivityCopy";
 import { isHostPath } from "@t3tools/shared/path";
+import {
+  focusHiddenRowsEqual,
+  type FocusHiddenRow,
+  type FocusRowMark,
+} from "../focus/focusView.logic";
 
 export function timelineEntryRunId(entry: TimelineEntry): RunId | null {
   if (entry.kind === "message") {
@@ -541,9 +546,11 @@ const LIVE_ACTIVITY_ROW_ID = "live-activity-row";
 
 export type MessagesTimelineRow = MessagesTimelineRowContent & {
   readonly continuesWorkLog?: boolean;
+  readonly focus?: FocusRowMark;
 };
 
 type MessagesTimelineRowContent =
+  | FocusHiddenRow
   | {
       kind: "worktree-setup";
       id: string;
@@ -2791,6 +2798,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
   if (a.kind !== b.kind || a.id !== b.id || a.continuesWorkLog !== b.continuesWorkLog) return false;
 
   switch (a.kind) {
+    case "focus-hidden":
+      return focusHiddenRowsEqual(a, b as typeof a);
     case "working":
       return (
         a.createdAt === (b as typeof a).createdAt && a.compacting === (b as typeof a).compacting

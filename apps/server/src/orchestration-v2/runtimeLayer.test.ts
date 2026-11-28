@@ -3867,6 +3867,19 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           step,
         );
       }
+      for (const focusView of [true, false]) {
+        yield* orchestrator.dispatch({
+          type: "thread.metadata.update",
+          commandId: CommandId.make(`runtime-layer-lifecycle-focus-view-${focusView}`),
+          threadId,
+          focusView,
+        });
+        assert.equal(shellOf(yield* orchestrator.getShellSnapshot()).focusView, focusView);
+        assert.equal(
+          (yield* orchestrator.getThreadProjection(threadId)).thread.focusView,
+          focusView,
+        );
+      }
       const taggedShell = shellOf(yield* orchestrator.getShellSnapshot());
       // Tags are not activity, so the thread keeps its place in thread lists.
       assert.equal(

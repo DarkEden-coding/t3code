@@ -320,6 +320,7 @@ import {
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { useCitedHistory } from "./chat/citationProcedure";
 import { starRevealRequest } from "./starred/starReveal";
+import { focusViewThreadKey } from "./focus/focusViewState";
 import type { MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { ThreadTimeline } from "./chat/ThreadTimeline";
 import { NativeChildWorkDialog } from "./chat/NativeChildWorkDialog";
@@ -3680,6 +3681,7 @@ export default function ChatView(props: ChatViewProps) {
             >
               <WorkspaceMutationIdContext value={workspaceMutationId}>
                 <ThreadTimeline
+                  focusViewThreadKey={focusViewThreadKey(activeThreadRef, activeThreadShell)}
                   pendingApprovals={pendingApprovals}
                   heldApprovalRequestIds={heldApprovalRequestIds}
                   respondingRequestIds={respondingRequestIds}
